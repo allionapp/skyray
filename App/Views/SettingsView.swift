@@ -338,7 +338,7 @@ struct SettingsView: View {
     private var privacy: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionHeader(title: "Privacy")
-            Footnote("SkyRay has no ads and no analytics. It only talks to the servers you add, your subscription URLs, and the latency test URL.")
+            Footnote("SkyRay has no analytics of its own. It talks to the servers you add, your subscription URLs, and the latency test URL. A short ad shows after you connect; ads are served by Google AdMob, which may use an advertising identifier — see the privacy policy for details.")
             Rule(strong: false)
             LinkRow(title: "Privacy policy", url: AppConstants.privacyPolicyURL)
             Rule(strong: false)

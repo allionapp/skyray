@@ -69,6 +69,7 @@ struct SkyRayApp: App {
             vpn.enableDemo()
             return
         }
+        AdsManager.shared.start()
         await handleLaunchArguments()
         if vpn.settings.pingOnOpen { Task { await profiles.pingAll() } }
         if vpn.settings.autoConnectOnLaunch, !vpn.isConnected, !UserDefaults.standard.bool(forKey: "AutoDisconnect") {

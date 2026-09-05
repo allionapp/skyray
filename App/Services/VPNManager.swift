@@ -152,8 +152,10 @@ final class VPNManager: ObservableObject {
         status = newStatus
         mirrorTunnelLog()
         if newStatus == .connected {
+            let isFreshConnect = connectedSince == nil
             if connectedSince == nil { connectedSince = manager?.connection.connectedDate ?? Date() }
             startStatsTimer()
+            if isFreshConnect { AdsManager.shared.showAfterConnect() }
         } else {
             connectedSince = nil
             stats = nil

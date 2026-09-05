@@ -22,7 +22,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.4.0</string>
+	<string>1.0.0</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -35,11 +35,22 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>4</string>
+	<string>1</string>
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-8085563084618250~4284064162</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>Used to scan server QR codes.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>This identifier is used to show ads that are more relevant to you after you connect.</string>
+	<key>SKAdNetworkItems</key>
+	<array>
+		<dict>
+			<key>SKAdNetworkIdentifier</key>
+			<string>cstr6suwn9.skadnetwork</string>
+		</dict>
+	</array>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Archivo.ttf</string>

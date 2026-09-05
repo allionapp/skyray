@@ -76,7 +76,7 @@
 "Refresh log" = "بازخوانی لاگ";
 "Copy log" = "کپی لاگ";
 "Privacy" = "حریم خصوصی";
-"SkyRay has no ads and no analytics. It only talks to the servers you add, your subscription URLs, and the latency test URL." = "SkyRay نه تبلیغ دارد و نه آمارگیری. فقط با سرورهایی که اضافه می‌کنید، لینک‌های اشتراک و آدرس تست تأخیر ارتباط می‌گیرد.";
+"SkyRay has no analytics of its own. It talks to the servers you add, your subscription URLs, and the latency test URL. A short ad shows after you connect; ads are served by Google AdMob, which may use an advertising identifier — see the privacy policy for details." = "SkyRay خودش آمارگیری ندارد. فقط با سرورهایی که اضافه می‌کنید، لینک‌های اشتراک و آدرس تست تأخیر ارتباط می‌گیرد. بعد از اتصال یک تبلیغ کوتاه نمایش داده می‌شود؛ تبلیغات را Google AdMob نمایش می‌دهد که ممکن است از شناسه‌ی تبلیغاتی دستگاه استفاده کند — جزئیات در سیاست حریم خصوصی آمده است.";
 "Built on Xray-core (MPL-2.0) via libXray and hev-socks5-tunnel (MIT)." = "ساخته‌شده بر پایه‌ی Xray-core (MPL-2.0) از طریق libXray و hev-socks5-tunnel (MIT).";
 "Done" = "تأیید";
 "Delete all servers" = "حذف همه‌ی سرورها";
