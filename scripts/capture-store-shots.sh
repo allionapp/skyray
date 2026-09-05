@@ -17,7 +17,7 @@ capture() { # udid lang dir
   local U=$1 LANG=$2 DIR=$3; mkdir -p "$DIR"
   local LOC="en_US"; [ "$LANG" = fa ] && LOC="fa_IR"
   local i=1
-  for pair in "home:" "servers:servers" "chooser:chooser" "paste:paste" "added:added"; do
+  for pair in "home:" "servers:servers" "settings:settings" "chooser:chooser" "paste:paste" "added:added"; do
     local name=${pair%%:*} screen=${pair#*:}
     xcrun simctl terminate $U $BUNDLE >/dev/null 2>&1 || true
     if [ -n "$screen" ]; then
@@ -38,23 +38,25 @@ fi
 compose() { # lang device W H
   local lang=$1; local dev=$2; local W=$3; local H=$4
   local out=store/screenshots/$lang-$dev; rm -rf "$out"; mkdir -p "$out"
-  local rtl="" T1 S1 T2 S2 T3 S3 T4 S4 T5 S5
+  local rtl="" T1 S1 T2 S2 T3 S3 T4 S4 T5 S5 T6 S6
   if [ "$lang" = en ]; then
     T1="One tap to connect"; S1="Live speed, ping and traffic while you browse."
     T2="All your servers, ranked by speed"; S2="Real latency tests. Pick the fastest in one tap."
-    T3="Three ways in"; S3="Paste a link, scan a QR code, or add a subscription."
-    T4="Paste it. We fill in the rest."; S4="Name, address and type are read from the link."
-    T5="Checked before it's saved"; S5="Every link is read, validated and reached first."
+    T3="Every setting in reach"; S3="Routing, DNS, fragment and kill switch, all in one place."
+    T4="Three ways in"; S4="Paste a link, scan a QR code, or add a subscription."
+    T5="Paste it. We fill in the rest."; S5="Name, address and type are read from the link."
+    T6="Checked before it's saved"; S6="Every link is read, validated and reached first."
   else
     rtl="rtl"
     T1="با یک ضربه متصل شوید"; S1="سرعت، پینگ و ترافیک زنده در حین استفاده"
     T2="همه‌ی سرورها، مرتب بر اساس سرعت"; S2="تست تأخیر واقعی و انتخاب سریع‌ترین با یک ضربه"
-    T3="سه راه برای افزودن"; S3="لینک بچسبانید، کد QR اسکن کنید یا اشتراک اضافه کنید"
-    T4="بچسبانید، بقیه با ما"; S4="نام، آدرس و نوع سرور از لینک خوانده می‌شود"
-    T5="قبل از ذخیره بررسی می‌شود"; S5="هر لینک اول خوانده، اعتبارسنجی و آزمایش می‌شود"
+    T3="همه‌ی تنظیمات در دسترس"; S3="مسیریابی، DNS، Fragment و کلید قطع، همه در یک‌جا"
+    T4="سه راه برای افزودن"; S4="لینک بچسبانید، کد QR اسکن کنید یا اشتراک اضافه کنید"
+    T5="بچسبانید، بقیه با ما"; S5="نام، آدرس و نوع سرور از لینک خوانده می‌شود"
+    T6="قبل از ذخیره بررسی می‌شود"; S6="هر لینک اول خوانده، اعتبارسنجی و آزمایش می‌شود"
   fi
   local i=1
-  for pair in "01-home|$T1|$S1" "02-servers|$T2|$S2" "03-chooser|$T3|$S3" "04-paste|$T4|$S4" "05-added|$T5|$S5"; do
+  for pair in "01-home|$T1|$S1" "02-servers|$T2|$S2" "03-settings|$T3|$S3" "04-chooser|$T4|$S4" "05-paste|$T5|$S5" "06-added|$T6|$S6"; do
     local f=${pair%%|*}; local rest=${pair#*|}; local t=${rest%%|*}; local s=${rest#*|}
     build/make-store-shot "build/shots/$lang-$dev/$f.png" "$out/$f.png" $W $H "$t" "$s" $rtl >/dev/null
     i=$((i+1))
