@@ -84,6 +84,8 @@ struct AppSettings: Codable, Equatable {
     var subscriptionAutoUpdateHours: Int = 12
     /// Ping all servers automatically when the app opens.
     var pingOnOpen: Bool = false
+    /// After a subscription refresh, test all servers and put the fastest first.
+    var pingAfterSubscriptionUpdate: Bool = false
 
     var theme: AppTheme = .system
 }

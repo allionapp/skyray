@@ -40,6 +40,12 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>Used to scan server QR codes.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Archivo.ttf</string>
+		<string>IBMPlexMono-Regular.ttf</string>
+		<string>IBMPlexMono-Medium.ttf</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

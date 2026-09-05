@@ -3,6 +3,7 @@ import AVFoundation
 
 /// Camera view that reports the first QR code it sees.
 struct QRScannerView: UIViewControllerRepresentable {
+    var torchOn: Bool = false
     let onCode: (String) -> Void
 
     func makeUIViewController(context: Context) -> ScannerController {
@@ -11,7 +12,9 @@ struct QRScannerView: UIViewControllerRepresentable {
         return controller
     }
 
-    func updateUIViewController(_ uiViewController: ScannerController, context: Context) {}
+    func updateUIViewController(_ uiViewController: ScannerController, context: Context) {
+        uiViewController.setTorch(torchOn)
+    }
 
     final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
         var onCode: ((String) -> Void)?
@@ -59,6 +62,13 @@ struct QRScannerView: UIViewControllerRepresentable {
             delivered = true
             session.stopRunning()
             onCode?(value)
+        }
+
+        func setTorch(_ on: Bool) {
+            guard let device = AVCaptureDevice.default(for: .video), device.hasTorch else { return }
+            try? device.lockForConfiguration()
+            device.torchMode = on ? .on : .off
+            device.unlockForConfiguration()
         }
 
         private func showUnavailable() {

@@ -47,6 +47,7 @@ targets:
         NSCameraUsageDescription: "Used to scan server QR codes."
         ITSAppUsesNonExemptEncryption: false
         CFBundleLocalizations: [en, fa]
+        UIAppFonts: [Archivo.ttf, IBMPlexMono-Regular.ttf, IBMPlexMono-Medium.ttf]
         CFBundleURLTypes:
           - CFBundleURLName: com.allion.skyray
             CFBundleURLSchemes: [skyray]

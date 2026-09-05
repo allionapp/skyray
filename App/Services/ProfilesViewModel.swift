@@ -32,6 +32,21 @@ final class ProfilesViewModel: ObservableObject {
 
     func select(_ profile: ServerProfile) { selectedId = profile.id }
 
+    /// Adds one profile (deduplicated by outbound) and returns the stored copy.
+    @discardableResult
+    func add(_ profile: ServerProfile) -> ServerProfile {
+        if let existing = profiles.first(where: { $0.outboundJSON == profile.outboundJSON }) {
+            var merged = existing
+            merged.name = profile.name
+            merged.latencyMs = profile.latencyMs ?? existing.latencyMs
+            update(merged)
+            return merged
+        }
+        profiles.append(profile)
+        persist()
+        return profile
+    }
+
     func update(_ profile: ServerProfile) {
         guard let i = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
         profiles[i] = profile
@@ -147,6 +162,9 @@ final class ProfilesViewModel: ObservableObject {
             }
             updateSubscriptionInfo(url: key, headers: http.allHeaderFields, fallbackTitle: resolved.title)
             writeImportLog("subscription ok: added=\(added) total=\(profiles.count) final=\(finalURL)")
+            if ProfileStore.shared.loadSettings().pingAfterSubscriptionUpdate, added > 0 {
+                Task { await pingAll(); sortByLatency() }
+            }
         } catch {
             message = String(format: String(localized: "Download failed: %@"), error.localizedDescription)
             writeImportLog("subscription failed: \(error.localizedDescription)")

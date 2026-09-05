@@ -14,6 +14,21 @@ with a Network Extension packet tunnel.
 - Traffic counters while connected, tunnel log viewer.
 - LAN/loopback ranges bypass the proxy; everything else goes through the selected server.
 
+## Design
+
+The UI follows the "Modernist" design Ehsan made in Claude Design (project `65380c3a-…`, file
+`V2Box Add Config.dc.html`): flat and square, ink `#201e1d` on a warm light ground `#f3f2f2`, 2px rules,
+Archivo (display/body) and IBM Plex Mono (data), red `#ec3013` as the one field colour (the connected
+state) and purple `#8013EC` for primary actions. `App/Theme/SkyTheme.swift` holds the tokens, rules,
+button styles, square toggle and boxed field. Fonts are bundled under `App/Resources/Fonts` (SIL OFL).
+
+Screens: Home (no config / off / connected), Servers, and the guided Add-config flow — chooser, paste,
+narrated check (read → validate → reach → measure, all real), added poster, unreadable-link help,
+QR scan, subscription. Settings and the server detail sheet keep the system look for now.
+
+Demo/screenshot mode: `-DemoMode YES` (fake connected state and demo servers, nothing persisted) plus
+`-DemoScreen servers|chooser|paste|added` opens a screen directly. `scripts/capture-store-shots.sh` uses it.
+
 ## Layout
 
 | Path | What |
@@ -25,6 +40,7 @@ with a Network Extension packet tunnel.
 | `Frameworks/` | `LibXray.xcframework` (Xray-core **and** sing-box in one Go runtime, built by `scripts/build-core.sh`), `HevSocks5Tunnel.xcframework` (`scripts/build-libs.sh`); not committed |
 | `core/raycore/` | Go module that bundles libXray with sing-box and exports `SingboxStart/Stop/Ping/Test` |
 | `scripts/build-libs.sh` | Rebuilds the native libraries |
+| `scripts/capture-store-shots.sh` | Captures all App Store screenshots from both simulators via demo mode and composes them |
 | `scripts/make-store-shot.swift` | Composes App Store screenshots from simulator captures (see `store/README.md`); the app's `-DemoMode YES` launch argument shows a demo connected state |
 | `scripts/make-icon.swift` | Renders the app icon (comet on a sky gradient) into the asset catalog: `swift scripts/make-icon.swift App/Assets.xcassets/AppIcon.appiconset/Icon-1024.png` |
 

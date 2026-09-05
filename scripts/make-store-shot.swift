@@ -41,22 +41,39 @@ func draw(_ text: String, size: CGFloat, weight: String, y: CGFloat, color: CGCo
     para.baseWritingDirection = rtl ? .rightToLeft : .leftToRight
     let str2 = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color, .paragraphStyle: para])
     let fs2 = CTFramesetterCreateWithAttributedString(str2)
-    let rect = CGRect(x: (W - maxWidth) / 2, y: y - fit.height, width: maxWidth, height: fit.height + 4)
+    // Measure with the real line metrics (Arabic-script fallback fonts sit taller than the estimate).
+    let probeFrame = CTFramesetterCreateFrame(fs2, CFRange(location: 0, length: 0), CGPath(rect: CGRect(x: 0, y: 0, width: maxWidth, height: 10_000), transform: nil), nil)
+    let lines = CTFrameGetLines(probeFrame) as? [CTLine] ?? []
+    var height: CGFloat = 0
+    for line in lines {
+        var ascent: CGFloat = 0, descent: CGFloat = 0, leading: CGFloat = 0
+        CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
+        height += ascent + descent + leading + size * scale * 0.18
+    }
+    height = max(height, fit.height)
+    let rect = CGRect(x: (W - maxWidth) / 2, y: y - height, width: maxWidth, height: height + 4)
     let path = CGPath(rect: rect, transform: nil)
     let frame = CTFramesetterCreateFrame(fs2, CFRange(location: 0, length: 0), path, nil)
     CTFrameDraw(frame, ctx)
-    return fit.height
+    return height
 }
 var cursor = H - 150 * scale
-let th = draw(title, size: 96, weight: rtl ? "GeezaPro-Bold" : "HelveticaNeue-Bold", y: cursor, color: rgb(0xFFFFFF))
+// Persian display type sits taller than its suggested frame, so give it more room.
+let titleSize: CGFloat = rtl ? 84 : 96
+let th = draw(title, size: titleSize, weight: rtl ? "GeezaPro-Bold" : "HelveticaNeue-Bold", y: cursor, color: rgb(0xFFFFFF))
 cursor -= th + 26 * scale
-_ = draw(subtitle, size: 46, weight: rtl ? "GeezaPro" : "HelveticaNeue", y: cursor, color: rgb(0xD8F3FF))
+cursor -= draw(subtitle, size: 46, weight: rtl ? "GeezaPro" : "HelveticaNeue", y: cursor, color: rgb(0xD8F3FF))
 
 // Device screenshot: scaled to ~76% width, rounded corners, shadow, anchored at the bottom.
 guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: inPath) as CFURL, nil),
       let shot = CGImageSourceCreateImageAtIndex(src, 0, nil) else { print("cannot read \(inPath)"); exit(1) }
-let shotW = W * 0.76
-let shotH = shotW * CGFloat(shot.height) / CGFloat(shot.width)
+// Fit the device under the text: at most 76% of the width, and never higher than
+// 40px below the subtitle (tablet captures are much taller relative to the canvas).
+let ratio = CGFloat(shot.height) / CGFloat(shot.width)
+let available = cursor - 40 * scale
+var shotH = min(W * 0.76 * ratio, available / 0.96)
+var shotW = shotH / ratio
+if shotW > W * 0.78 { shotW = W * 0.78; shotH = shotW * ratio }
 let shotRect = CGRect(x: (W - shotW) / 2, y: -shotH * 0.04, width: shotW, height: shotH)
 let corner = shotW * 0.11
 ctx.saveGState()

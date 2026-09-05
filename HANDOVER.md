@@ -47,7 +47,7 @@ Not verified: Hysteria2 and WireGuard against real servers (parsed and configure
 | Path | What |
 | --- | --- |
 | `project.yml` | XcodeGen spec. Two targets: `SkyRay` (app) and `PacketTunnel` (network extension). Run `xcodegen generate` after any file add/remove. |
-| `App/` | SwiftUI app: `SkyRayApp.swift` (launch args, URL scheme, auto-connect, theme), `Views/`, `Services/` (`VPNManager`, `ProfilesViewModel`, `SubscriptionFetcher`, `TCPPing`, `AppIntents`), `Resources/` (en/fa strings, privacy manifest). |
+| `App/` | SwiftUI app: `SkyRayApp.swift` (launch args, URL scheme, auto-connect, theme), `Theme/SkyTheme.swift` (design tokens), `Views/` + `Views/AddConfig/`, `Services/` (`VPNManager`, `ProfilesViewModel`, `SubscriptionFetcher`, `TCPPing`, `AppIntents`), `Resources/` (en/fa strings, privacy manifest). |
 | `PacketTunnel/` | `PacketTunnelProvider` (starts the right core, watchdog, memory log, sleep/wake), `HevTunnel`, `TunnelFD`, `TunnelLog`, `MemoryMonitor`, `GeoData/` (trimmed geoip/geosite). |
 | `Shared/` | Compiled into both targets: `ServerProfile` (+ `core` field), `ProfileStore` (App Group persistence, backup, active profile, settings), `AppSettings`, `XrayCore`/`SingboxCore` wrappers, `XrayConfigBuilder`/`SingboxConfigBuilder`, `ShareLinkParser`, `SingboxLinkParser`, `SubscriptionLinkResolver`. |
 | `core/raycore/` | Go module bundling libXray + sing-box. Exports `SingboxStart/Stop/Running/Test/Ping/Version`. `cmd/probe` is a Mac-side smoke test. |
@@ -134,7 +134,7 @@ Simulator quirks: the keyboard is a Persian layout, so put text on the clipboard
 
 ## 9. Known gaps / next steps
 
-1. **Claude Design "V2Box Add Config" screen** — Ehsan wants that design implemented for the Add Config screen. Import is blocked until `/design-login` is run in an interactive Claude Code terminal (project `65380c3a-a3d3-42c3-bc41-7682a3316364`, file `V2Box Add Config.dc.html`).
+1. **Design (done 2026-09-05):** the Claude Design "Modernist" screens are implemented (Home states, Servers, the whole Add-config flow). The design file was pulled through Ehsan's logged-in Chrome (`GetFile` RPC on claude.ai/design) into `build/design/` — re-fetch the same way if the design changes. Still on the system look: Settings, Rules, Backup and the server detail sheet; restyle them with `SkyTheme` when there is time.
 2. Verify Hysteria2 and WireGuard against real servers.
 3. Test LAN sharing from a second device, Connect-on-demand and kill switch over hours, and background battery use.
 4. Optional features not done: iCloud sync, home-screen widget, more languages (ru, zh), per-app proxy is impossible on iOS.

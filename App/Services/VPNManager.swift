@@ -19,6 +19,9 @@ final class VPNManager: ObservableObject {
     /// Current throughput in bytes/second, derived from consecutive stats samples.
     @Published private(set) var uploadSpeed: Double = 0
     @Published private(set) var downloadSpeed: Double = 0
+    /// Last 12 download-speed samples normalised to 0...1 for the home sparkline.
+    @Published private(set) var speedHistory: [Double] = Array(repeating: 0.02, count: 12)
+    private var rawHistory: [Double] = []
     @Published var settings: AppSettings {
         didSet { ProfileStore.shared.saveSettings(settings) }
     }
@@ -39,6 +42,7 @@ final class VPNManager: ObservableObject {
         stats = TunnelStats(txBytes: 184_320_000, rxBytes: 1_402_000_000, xrayRunning: true, memoryBytes: 18 * 1024 * 1024)
         uploadSpeed = 1_250_000
         downloadSpeed = 9_800_000
+        speedHistory = [0.22, 0.38, 0.31, 0.64, 0.52, 0.45, 0.7, 0.58, 0.83, 0.88, 0.71, 0.44]
         lastError = nil
     }
 
@@ -147,6 +151,8 @@ final class VPNManager: ObservableObject {
             connectedSince = nil
             stats = nil
             lastSample = nil
+            rawHistory = []
+            speedHistory = Array(repeating: 0.02, count: 12)
             uploadSpeed = 0
             downloadSpeed = 0
             statsTimer?.invalidate()
@@ -184,6 +190,12 @@ final class VPNManager: ObservableObject {
                     let dt = max(0.5, Date().timeIntervalSince(last.date))
                     uploadSpeed = max(0, Double(s.txBytes - last.tx) / dt)
                     downloadSpeed = max(0, Double(s.rxBytes - last.rx) / dt)
+                    rawHistory.append(downloadSpeed + uploadSpeed)
+                    if rawHistory.count > 12 { rawHistory.removeFirst(rawHistory.count - 12) }
+                    let peak = max(rawHistory.max() ?? 1, 1)
+                    var normalised = rawHistory.map { max(0.02, $0 / peak) }
+                    while normalised.count < 12 { normalised.insert(0.02, at: 0) }
+                    speedHistory = normalised
                 }
                 lastSample = (Date(), s.txBytes, s.rxBytes)
                 stats = s

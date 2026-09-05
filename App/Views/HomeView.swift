@@ -1,54 +1,176 @@
 import SwiftUI
 
+/// Home: one decision per screen — which server, and on or off.
+/// Three states from the design: no config yet, off with a server chosen,
+/// and connected (the red field carries the state).
 struct HomeView: View {
     @EnvironmentObject private var vpn: VPNManager
     @EnvironmentObject private var profiles: ProfilesViewModel
     @State private var showAdd = false
+    @State private var showServers = false
     @State private var showSettings = false
 
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                if let sub = currentSubscription, let announce = sub.announce, !announce.isEmpty {
-                    AnnounceBanner(text: announce)
-                }
-                Spacer()
-                connectButton
-                Text(vpn.status.label)
-                    .font(.title3.weight(.medium))
-                    .foregroundColor(vpn.isConnected ? .green : .secondary)
-                if vpn.isConnected { statsView }
-                if let error = vpn.lastError {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundColor(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-                Spacer()
-                if let sub = currentSubscription { SubscriptionQuotaView(info: sub) }
-                NavigationLink(destination: ServerListView()) { serverCard }
-                    .buttonStyle(.plain)
+            ZStack {
+                (vpn.isConnected ? Sky.accent : Sky.ground).ignoresSafeArea()
+                content
+                    .frame(maxWidth: 640)
+                    .frame(maxWidth: .infinity)
+                NavigationLink(destination: ServerListView(), isActive: $showServers) { EmptyView() }.hidden()
             }
-            .padding()
-            // Keep the layout phone-like on iPad instead of stretching across 13 inches.
-            .frame(maxWidth: 640)
-            .frame(maxWidth: .infinity)
-            .navigationTitle("SkyRay")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                        .accessibilityLabel(Text("Settings"))
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showAdd = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel(Text("Add server"))
-                }
-            }
-            .sheet(isPresented: $showAdd) { AddServerView() }
+            .navigationBarHidden(true)
+            .sheet(isPresented: $showAdd) { AddConfigFlow() }
             .sheet(isPresented: $showSettings) { SettingsView() }
+            .onAppear {
+                switch DemoRouter.screen {
+                case "servers": showServers = true
+                case "chooser", "paste", "added": showAdd = true
+                default: break
+                }
+            }
         }
         .navigationViewStyle(.stack)
+        .animation(.easeInOut(duration: 0.25), value: vpn.isConnected)
+    }
+
+    @ViewBuilder private var content: some View {
+        if vpn.isConnected {
+            connectedState
+        } else if profiles.profiles.isEmpty {
+            emptyState
+        } else {
+            offState
+        }
+    }
+
+    // MARK: Header (brand + settings)
+
+    private func header(onField: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("SkyRay").font(Sky.heading(17)).foregroundColor(onField ? Sky.onField : Sky.ink)
+                Spacer()
+                Button { showSettings = true } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(onField ? Sky.onField.opacity(0.85) : Sky.muted(0.6))
+                        .frame(width: 44, height: 44, alignment: .trailing)
+                }
+                .accessibilityLabel(Text("Settings"))
+            }
+            .padding(.horizontal, 24).padding(.top, 10).padding(.bottom, 6)
+            Rule(onField: onField)
+        }
+    }
+
+    // MARK: 2a — no config yet
+
+    private var emptyState: some View {
+        VStack(spacing: 0) {
+            header(onField: false)
+            VStack(alignment: .leading, spacing: 0) {
+                Spacer()
+                Rectangle().stroke(Sky.ink.opacity(0.25), lineWidth: 2)
+                    .frame(width: 132, height: 132)
+                    .overlay(Image(systemName: "power").font(.system(size: 42, weight: .light)).foregroundColor(Sky.ink.opacity(0.3)))
+                    .padding(.bottom, 28)
+                Text("No server yet").font(Sky.heading(32)).foregroundColor(Sky.ink)
+                Text("Add the link or QR code your provider gave you. It takes about a minute.")
+                    .font(Sky.body(15)).foregroundColor(Sky.muted(0.65)).padding(.top, 12).frame(maxWidth: 300, alignment: .leading)
+                Spacer()
+            }
+            .padding(.horizontal, 24).leading()
+            Rule()
+            VStack(spacing: 10) {
+                Button { showAdd = true } label: { Label("Add a config", systemImage: "plus") }
+                    .buttonStyle(SecondaryButtonStyle())
+            }
+            .padding(24)
+        }
+    }
+
+    // MARK: 2b — off, server chosen
+
+    private var offState: some View {
+        VStack(spacing: 0) {
+            header(onField: false)
+            VStack(alignment: .leading, spacing: 0) {
+                Kicker(text: "Not connected")
+                Text("Off").font(Sky.heading(44)).foregroundColor(Sky.ink).padding(.top, 14)
+                Text("Your traffic is going out normally, without the server.")
+                    .font(Sky.body(15)).foregroundColor(Sky.muted(0.65)).padding(.top, 14).frame(maxWidth: 300, alignment: .leading)
+                if let error = vpn.lastError {
+                    Text(error).font(Sky.body(13)).foregroundColor(Sky.accentDeep).padding(.top, 12)
+                }
+            }
+            .padding(.horizontal, 24).padding(.top, 34).leading()
+            Rule().padding(.top, 34)
+            selectedRow
+            Rule()
+            if let sub = currentSubscription { quotaRow(sub) }
+            Spacer()
+            VStack(spacing: 10) {
+                Button {
+                    Task { await vpn.toggle(profile: profiles.selectedProfile) }
+                } label: {
+                    HStack { Text("Connect"); Spacer(); if vpn.isBusy { ProgressView().tint(Sky.onField) } else { Image(systemName: "power").font(.system(size: 18, weight: .bold)) } }
+                }
+                .buttonStyle(PrimaryButtonStyle(height: 64))
+                .disabled(vpn.isBusy)
+                Button { showAdd = true } label: { Label("Add a config", systemImage: "plus") }
+                    .buttonStyle(SecondaryButtonStyle(height: 50))
+            }
+            .padding(24)
+        }
+    }
+
+    private var selectedRow: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Rectangle().fill(Sky.ink).frame(width: 4)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Selected server").font(Sky.semibold(10)).tracking(1).textCase(.uppercase).foregroundColor(Sky.muted(0.5)).padding(.bottom, 2)
+                Text(profiles.selectedProfile?.name ?? "").font(Sky.semibold(16)).foregroundColor(Sky.ink).lineLimit(1)
+                Text(verbatim: addressLine(profiles.selectedProfile)).font(Sky.mono(11.5)).foregroundColor(Sky.muted(0.55)).lineLimit(1)
+            }
+            Spacer()
+            Button("Change") { showServers = true }.buttonStyle(ChipButtonStyle())
+        }
+        .padding(.vertical, 18).padding(.horizontal, 24)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func addressLine(_ p: ServerProfile?) -> String {
+        guard let p else { return "" }
+        var s = "\(p.address):\(p.port)"
+        if let ms = p.latencyMs { s += ms < 0 ? " · —" : " · \(ms) ms" }
+        return s
+    }
+
+    private func quotaRow(_ sub: SubscriptionInfo) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let total = sub.total, let used = sub.used {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Rectangle().fill(Sky.ink.opacity(0.15))
+                        Rectangle().fill(Sky.accent).frame(width: geo.size.width * CGFloat(min(1, Double(used) / Double(max(total, 1)))))
+                    }
+                }
+                .frame(height: 6)
+                Text(String(format: String(localized: "%@ of %@ used"),
+                            ByteCountFormatter.string(fromByteCount: used, countStyle: .binary),
+                            ByteCountFormatter.string(fromByteCount: total, countStyle: .binary)))
+                    .font(Sky.mono(11.5)).foregroundColor(Sky.muted(0.6))
+            }
+            if let expire = sub.expire {
+                Text(String(format: String(localized: "Expires %@"), expire.formatted(date: .abbreviated, time: .omitted)))
+                    .font(Sky.mono(11.5)).foregroundColor(sub.isExpired || sub.expiresSoon ? Sky.accentDeep : Sky.muted(0.6))
+            }
+            if let announce = sub.announce, !announce.isEmpty {
+                Text(announce).font(Sky.body(12.5)).foregroundColor(Sky.muted(0.7)).padding(.top, 4)
+            }
+        }
+        .padding(.horizontal, 24).padding(.vertical, 16).leading()
     }
 
     private var currentSubscription: SubscriptionInfo? {
@@ -56,142 +178,91 @@ struct HomeView: View {
         return profiles.subscriptions.first { $0.url == url }
     }
 
-    private var connectButton: some View {
-        Button {
-            Task { await vpn.toggle(profile: profiles.selectedProfile) }
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(vpn.isConnected ? Color.green.opacity(0.15) : Color.accentColor.opacity(0.12))
-                    .frame(width: 190, height: 190)
-                Circle()
-                    .strokeBorder(vpn.isConnected ? Color.green : Color.accentColor, lineWidth: 6)
-                    .frame(width: 190, height: 190)
-                if vpn.isBusy {
-                    ProgressView().scaleEffect(1.6)
-                } else {
-                    Image(systemName: "power")
-                        .font(.system(size: 64, weight: .bold))
-                        .foregroundColor(vpn.isConnected ? Color.green : Color.accentColor)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(vpn.isBusy)
-        .accessibilityLabel(vpn.isConnected ? Text("Disconnect") : Text("Connect"))
-    }
+    // MARK: 2c — connected, red carries the state
 
-    private var statsView: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 20) {
-                if let since = vpn.connectedSince {
-                    Label { Text(since, style: .timer) } icon: { Image(systemName: "clock") }
-                }
-                if let stats = vpn.stats {
-                    Label(ByteCountFormatter.string(fromByteCount: Int64(stats.txBytes), countStyle: .binary), systemImage: "arrow.up")
-                    Label(ByteCountFormatter.string(fromByteCount: Int64(stats.rxBytes), countStyle: .binary), systemImage: "arrow.down")
-                }
-            }
-            HStack(spacing: 20) {
-                Text("↑ \(speed(vpn.uploadSpeed))")
-                Text("↓ \(speed(vpn.downloadSpeed))")
-            }
-        }
-        .font(.footnote.monospacedDigit())
-        .foregroundColor(.secondary)
-    }
-
-    private func speed(_ bytesPerSecond: Double) -> String {
-        ByteCountFormatter.string(fromByteCount: Int64(bytesPerSecond), countStyle: .binary) + "/s"
-    }
-
-    private var serverCard: some View {
-        HStack {
-                Image(systemName: "server.rack")
-                    .font(.title2)
-                    .foregroundColor(.accentColor)
-                VStack(alignment: .leading, spacing: 2) {
-                    if let p = profiles.selectedProfile {
-                        Text(p.name).font(.headline).lineLimit(1)
-                        Text(p.subtitle).font(.caption).foregroundColor(.secondary).lineLimit(1)
-                    } else {
-                        Text("No server").font(.headline)
-                        Text("Tap + to add a server").font(.caption).foregroundColor(.secondary)
+    private var connectedState: some View {
+        VStack(spacing: 0) {
+            header(onField: true)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 9) {
+                    Rectangle().fill(Sky.onField).frame(width: 9, height: 9)
+                    Text("Connected").font(Sky.semibold(11)).tracking(1.3).textCase(.uppercase)
+                    if let since = vpn.connectedSince {
+                        Text("·").font(Sky.semibold(11))
+                        Text(since, style: .timer).font(Sky.mono(11, medium: true))
                     }
                 }
-                Spacer()
-                if let ms = profiles.selectedProfile?.latencyMs { LatencyBadge(ms: ms) }
-                Image(systemName: "chevron.forward").foregroundColor(Color.secondary.opacity(0.5))
-        }
-        .padding()
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
-        .contentShape(Rectangle())
-    }
-}
-
-struct AnnounceBanner: View {
-    let text: String
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "megaphone").foregroundColor(.orange)
-            Text(text).font(.footnote).multilineTextAlignment(.leading)
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-    }
-}
-
-struct LatencyBadge: View {
-    let ms: Int
-    var body: some View {
-        Text(ms < 0 ? String(localized: "timeout") : "\(ms) ms")
-            .font(.caption.monospacedDigit().weight(.semibold))
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(color.opacity(0.15), in: Capsule())
-            .foregroundColor(color)
-    }
-    private var color: Color {
-        if ms < 0 { return .red }
-        if ms < 300 { return .green }
-        if ms < 800 { return .orange }
-        return .red
-    }
-}
-
-/// Remaining traffic, expiry and provider links from the subscription headers.
-struct SubscriptionQuotaView: View {
-    let info: SubscriptionInfo
-    @Environment(\.openURL) private var openURL
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "chart.bar.fill").foregroundColor(.accentColor)
-            VStack(alignment: .leading, spacing: 2) {
-                if let total = info.total, let used = info.used {
-                    ProgressView(value: min(1, Double(used) / Double(max(total, 1))))
-                    Text(String(format: String(localized: "%@ of %@ used"),
-                                ByteCountFormatter.string(fromByteCount: used, countStyle: .binary),
-                                ByteCountFormatter.string(fromByteCount: total, countStyle: .binary)))
-                        .font(.caption).foregroundColor(.secondary)
-                } else {
-                    Text(info.title ?? String(localized: "Subscription")).font(.caption).foregroundColor(.secondary)
-                }
-                if let expire = info.expire {
-                    Text(String(format: String(localized: "Expires %@"), expire.formatted(date: .abbreviated, time: .omitted)))
-                        .font(.caption2).foregroundColor(info.isExpired || info.expiresSoon ? .red : .secondary)
-                }
+                .foregroundColor(Sky.onField)
+                Text(profiles.selectedProfile?.name ?? "").font(Sky.heading(44)).foregroundColor(Sky.onField)
+                    .lineLimit(2).minimumScaleFactor(0.6).padding(.top, 14)
+                Text(verbatim: addressLine(profiles.selectedProfile)).font(Sky.mono(12.5, medium: true)).foregroundColor(Sky.onField).padding(.top, 16)
             }
+            .padding(.horizontal, 24).padding(.top, 34).leading()
+            Rule(onField: true).padding(.top, 30)
+            statsGrid
+            sparkline
             Spacer()
-            if let s = info.supportURL, let url = URL(string: s) {
-                Button { openURL(url) } label: { Image(systemName: "questionmark.circle") }
-                    .accessibilityLabel(Text("Support"))
+            Button { vpn.disconnect() } label: {
+                HStack { Text("Disconnect"); Spacer(); Image(systemName: "xmark").font(.system(size: 18, weight: .bold)) }
             }
-            if let w = info.webPageURL, let url = URL(string: w) {
-                Button { openURL(url) } label: { Image(systemName: "globe") }
-                    .accessibilityLabel(Text("Website"))
+            .buttonStyle(PrimaryButtonStyle(height: 64, fill: Sky.onField, foreground: Sky.fieldInk))
+            .padding(24)
+        }
+    }
+
+    private var statsGrid: some View {
+        let s = vpn.stats
+        return VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                stat("Down", speed(vpn.downloadSpeed)); Rectangle().fill(Sky.onField.opacity(0.55)).frame(width: 2)
+                stat("Up", speed(vpn.uploadSpeed))
+            }
+            Rule(onField: true)
+            HStack(spacing: 0) {
+                stat("Ping", pingText); Rectangle().fill(Sky.onField.opacity(0.55)).frame(width: 2)
+                stat("Used", (ByteCountFormatter.string(fromByteCount: Int64((s?.rxBytes ?? 0) + (s?.txBytes ?? 0)), countStyle: .binary), ""))
+            }
+            Rule(onField: true)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var pingText: (String, String) {
+        if let ms = profiles.selectedProfile?.latencyMs, ms >= 0 { return ("\(ms)", " ms") }
+        return ("—", "")
+    }
+
+    private func speed(_ bytesPerSecond: Double) -> (String, String) {
+        let mb = bytesPerSecond / 1_048_576
+        if mb >= 1 { return (String(format: "%.1f", mb), " MB/s") }
+        return (String(format: "%.0f", bytesPerSecond / 1024), " KB/s")
+    }
+
+    private func stat(_ label: LocalizedStringKey, _ value: (String, String)) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(label).font(Sky.semibold(10)).tracking(1).textCase(.uppercase)
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text(value.0).font(Sky.mono(20, medium: true))
+                Text(value.1).font(Sky.mono(12, medium: true))
             }
         }
-        .padding(.horizontal, 4)
+        .foregroundColor(Sky.onField)
+        .padding(.vertical, 18).padding(.horizontal, 24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Throughput history as bars; the most recent samples are solid.
+    private var sparkline: some View {
+        let samples = vpn.speedHistory
+        return HStack(alignment: .bottom, spacing: 3) {
+            ForEach(Array(samples.enumerated()), id: \.offset) { i, v in
+                Rectangle()
+                    .fill(Sky.onField.opacity(i >= samples.count - 3 ? 1 : 0.45))
+                    .frame(height: max(2, 54 * CGFloat(v)))
+            }
+        }
+        .frame(height: 54, alignment: .bottom)
+        .padding(.horizontal, 24).padding(.top, 20)
+        .leading()
     }
 }

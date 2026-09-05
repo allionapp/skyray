@@ -69,6 +69,7 @@ struct SettingsView: View {
                     Toggle("Kill switch", isOn: $vpn.settings.killSwitch)
                     Toggle("Stay connected while the screen is locked", isOn: $vpn.settings.keepAliveOnSleep)
                     Toggle("Test latencies when the app opens", isOn: $vpn.settings.pingOnOpen)
+                    Toggle("Test speed after updating subscriptions", isOn: $vpn.settings.pingAfterSubscriptionUpdate)
                 }
                 Section(header: Text("Share proxy on LAN"), footer: Text("Other devices on your Wi-Fi can use this phone as a proxy: SOCKS5 on port \(AppConstants.socksPort), HTTP on port \(vpn.settings.httpPort).")) {
                     Toggle("Allow connections from LAN", isOn: $vpn.settings.allowLAN)
