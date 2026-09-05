@@ -55,6 +55,9 @@ targets:
         CFBundleVersion: "1"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # Portrait-only UI: opt out of iPad Split View/Slide Over (which would
+        # otherwise require declaring all 4 orientations for App Store upload).
+        UIRequiresFullScreen: true
         NSCameraUsageDescription: "Used to scan server QR codes."
         NSUserTrackingUsageDescription: "This identifier is used to show ads that are more relevant to you after you connect."
         ITSAppUsesNonExemptEncryption: false
