@@ -19,6 +19,10 @@ enum AppConstants {
     static let tunnelLogFile = "tunnel.log"
     static let selectedProfileKey = "selectedProfileId"
 
+    static let privacyPolicyURL = "https://allionapp.github.io/skyray-site/privacy.html"
+    static let supportURL = "https://allionapp.github.io/skyray-site/support.html"
+    static let termsURL = "https://allionapp.github.io/skyray-site/terms.html"
+
     static let pingURL = "https://www.google.com/generate_204"
     /// Plain-HTTP probe used for sing-box outbounds (cheaper, no TLS on top of the tunnel).
     static let pingURLPlain = "http://cp.cloudflare.com/generate_204"

@@ -138,7 +138,7 @@ Simulator quirks: the keyboard is a Persian layout, so put text on the clipboard
 2. Verify Hysteria2 and WireGuard against real servers.
 3. Test LAN sharing from a second device, Connect-on-demand and kill switch over hours, and background battery use.
 4. Optional features not done: iCloud sync, home-screen widget, more languages (ru, zh), per-app proxy is impossible on iOS.
-5. App Store prep: launch screen (the app icon and screenshots are done: `store/screenshots/`, `scripts/make-store-shot.swift`, demo mode via `-DemoMode YES`; `scripts/make-icon.swift` renders `App/Assets.xcassets/AppIcon.appiconset/Icon-1024.png`), `ITSAppUsesNonExemptEncryption` is already `false`, export compliance notes for the crypto in Xray/sing-box.
+5. App Store prep: privacy policy / support / terms pages are live at https://allionapp.github.io/skyray-site/ (repo allionapp/skyray-site, public). Launch screen still to do (the app icon and screenshots are done: `store/screenshots/`, `scripts/make-store-shot.swift`, demo mode via `-DemoMode YES`; `scripts/make-icon.swift` renders `App/Assets.xcassets/AppIcon.appiconset/Icon-1024.png`), `ITSAppUsesNonExemptEncryption` is already `false`, export compliance notes for the crypto in Xray/sing-box.
 6. Repo is on GitHub (private). Consider adding a CI workflow that runs `xcodegen generate` + a simulator build.
 7. Android client (Kotlin, same architecture) when Ehsan re-opens that decision.
 

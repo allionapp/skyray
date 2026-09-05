@@ -116,6 +116,14 @@ data files are intentionally not loaded there.
 | Stops working when the phone sleeps | `disconnectOnSleep = false`; optional Connect On Demand auto-reconnect; optional kill switch |
 | Confusing subscription / quota | Quota and expiry from `subscription-userinfo` shown on the home screen |
 
+## Store listing links
+
+- Privacy policy: https://allionapp.github.io/skyray-site/privacy.html (Persian: `privacy-fa.html`)
+- Support: https://allionapp.github.io/skyray-site/support.html
+- Terms: https://allionapp.github.io/skyray-site/terms.html
+- Source of the site: https://github.com/allionapp/skyray-site (public, GitHub Pages)
+- App Privacy answers for App Store Connect / Play Data safety: **Data Not Collected** (no tracking, no analytics, no accounts).
+
 ## Licenses
 
 Xray-core and libXray are MPL-2.0; hev-socks5-tunnel is MIT.

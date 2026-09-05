@@ -140,6 +140,9 @@ struct SettingsView: View {
                 Section(header: Text("Privacy")) {
                     Text("SkyRay has no ads and no analytics. It only talks to the servers you add, your subscription URLs, and the latency test URL.")
                         .font(.footnote).foregroundColor(.secondary)
+                    Link(destination: URL(string: AppConstants.privacyPolicyURL)!) { Label("Privacy policy", systemImage: "hand.raised") }
+                    Link(destination: URL(string: AppConstants.supportURL)!) { Label("Support", systemImage: "questionmark.circle") }
+                    Link(destination: URL(string: AppConstants.termsURL)!) { Label("Terms of use", systemImage: "doc.text") }
                     Text("Built on Xray-core (MPL-2.0) via libXray and hev-socks5-tunnel (MIT). Geo data from Iran-v2ray-rules.")
                         .font(.footnote).foregroundColor(.secondary)
                 }
