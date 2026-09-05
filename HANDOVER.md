@@ -40,7 +40,7 @@ Not verified: Hysteria2 and WireGuard against real servers (parsed and configure
 - Apple team: **ALLION LLC, `SG5BT8WSLT`** (signed in to Xcode). Automatic signing already created the App IDs
   `com.allion.skyray` and `com.allion.skyray.PacketTunnel` with Network Extensions + App Group `group.com.allion.skyray`.
 - Signing identity in use: "Apple Development: ehsan karimi (57FZL75W5W)".
-- The repo is **not a git repository** yet (never asked for). `.gitignore` is ready; `third_party/`, `Frameworks/*.xcframework`, `build/` are excluded.
+- Source: **https://github.com/allionapp/skyray** (private, branch `main`, pushed 2026-09-05). `third_party/`, `Frameworks/*.xcframework`, `build/` and the generated `SkyRay.xcodeproj` are gitignored; run `xcodegen generate` after cloning.
 
 ## 4. Repository layout
 
@@ -139,7 +139,7 @@ Simulator quirks: the keyboard is a Persian layout, so put text on the clipboard
 3. Test LAN sharing from a second device, Connect-on-demand and kill switch over hours, and background battery use.
 4. Optional features not done: iCloud sync, home-screen widget, more languages (ru, zh), per-app proxy is impossible on iOS.
 5. App Store prep: launch screen (the app icon and screenshots are done: `store/screenshots/`, `scripts/make-store-shot.swift`, demo mode via `-DemoMode YES`; `scripts/make-icon.swift` renders `App/Assets.xcassets/AppIcon.appiconset/Icon-1024.png`), `ITSAppUsesNonExemptEncryption` is already `false`, export compliance notes for the crypto in Xray/sing-box.
-6. Consider turning the folder into a git repo and committing (nothing has been committed so far).
+6. Repo is on GitHub (private). Consider adding a CI workflow that runs `xcodegen generate` + a simulator build.
 7. Android client (Kotlin, same architecture) when Ehsan re-opens that decision.
 
 ## 10. Licenses
