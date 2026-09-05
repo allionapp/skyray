@@ -78,12 +78,13 @@ struct PrimaryButtonStyle: ButtonStyle {
     var height: CGFloat = 54
     var fill: Color = Sky.primary
     var foreground: Color = Sky.onField
+    var fullWidth = true
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(Sky.heading(15))
+            .font(Sky.heading(fullWidth ? 15 : 13))
             .foregroundColor(foreground)
-            .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .leading)
-            .padding(.horizontal, 18)
+            .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: height, maxHeight: height, alignment: .leading)
+            .padding(.horizontal, fullWidth ? 18 : 14)
             .background(fill.opacity(configuration.isPressed ? 0.8 : 1))
             .contentShape(Rectangle())
     }
@@ -94,10 +95,12 @@ struct SecondaryButtonStyle: ButtonStyle {
     var height: CGFloat = 54
     var onField = false
     var fullWidth = true
+    /// Text color override (e.g. `Sky.accentDeep` for destructive actions).
+    var tint: Color? = nil
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(Sky.heading(fullWidth ? 15 : 13))
-            .foregroundColor(onField ? Sky.onField : Sky.ink)
+            .foregroundColor(tint ?? (onField ? Sky.onField : Sky.ink))
             .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: height, maxHeight: height, alignment: .leading)
             .padding(.horizontal, fullWidth ? 18 : 14)
             .background(
@@ -180,7 +183,201 @@ extension View {
 }
 
 
-/// Marketing/demo navigation: `-DemoMode YES -DemoScreen <servers|chooser|paste|added>`
+// MARK: - Settings building blocks
+
+/// Square outlined icon button (36×36), e.g. the close "×" or a "…" menu anchor.
+struct IconButton: View {
+    let systemName: String
+    var accessibility: LocalizedStringKey = ""
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName).font(.system(size: 15, weight: .heavy)).foregroundColor(Sky.ink)
+                .frame(width: 36, height: 36)
+                .overlay(Rectangle().stroke(Sky.divider(), lineWidth: 1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(accessibility))
+    }
+}
+
+/// Uppercase section title sitting on a strong rule.
+struct SectionHeader: View {
+    let title: LocalizedStringKey
+    var trailing: String? = nil
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Kicker(text: title, color: Sky.muted(0.55))
+                Spacer()
+                if let trailing { Text(verbatim: trailing).font(Sky.mono(11, medium: true)).foregroundColor(Sky.muted(0.5)) }
+            }
+            .padding(.horizontal, 24).padding(.top, 30).padding(.bottom, 10)
+            Rule()
+        }
+        .leading()
+    }
+}
+
+/// Muted explanatory text under a group of rows.
+struct Footnote: View {
+    let content: Text
+    init(_ key: LocalizedStringKey) { content = Text(key) }
+    init(verbatim text: String) { content = Text(verbatim: text) }
+    var body: some View {
+        content.font(Sky.body(12.5)).foregroundColor(Sky.muted(0.6))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 24).padding(.vertical, 14).leading()
+    }
+}
+
+/// Title (+ optional detail) with the square toggle on the trailing edge.
+struct ToggleRow: View {
+    let title: LocalizedStringKey
+    var detail: LocalizedStringKey? = nil
+    @Binding var isOn: Bool
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(Sky.semibold(15)).foregroundColor(Sky.ink)
+                if let detail { Text(detail).font(Sky.body(12.5)).foregroundColor(Sky.muted(0.6)) }
+            }
+            .padding(.trailing, 12)
+        }
+        .toggleStyle(SquareToggleStyle())
+        .padding(.horizontal, 24).padding(.vertical, 15)
+    }
+}
+
+/// Label on the left, mono value on the right.
+struct ValueRow: View {
+    let title: LocalizedStringKey
+    let value: String
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title).font(Sky.body(15)).foregroundColor(Sky.ink)
+            Spacer(minLength: 16)
+            Text(verbatim: value).font(Sky.mono(13)).foregroundColor(Sky.muted(0.65)).multilineTextAlignment(.trailing)
+        }
+        .padding(.horizontal, 24).padding(.vertical, 15)
+    }
+}
+
+/// Row that pushes another screen: title, optional mono detail, chevron.
+struct NavRow<Destination: View>: View {
+    let title: LocalizedStringKey
+    var detail: String? = nil
+    @ViewBuilder let destination: () -> Destination
+    var body: some View {
+        NavigationLink(destination: destination().navigationBarHidden(true)) {
+            HStack {
+                Text(title).font(Sky.semibold(15)).foregroundColor(Sky.ink)
+                Spacer()
+                if let detail { Text(verbatim: detail).font(Sky.mono(13)).foregroundColor(Sky.muted(0.55)) }
+                Image(systemName: "chevron.forward").font(.system(size: 12, weight: .heavy)).foregroundColor(Sky.muted(0.45))
+            }
+            .padding(.horizontal, 24).padding(.vertical, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Row that opens a web page in the browser.
+struct LinkRow: View {
+    let title: LocalizedStringKey
+    let url: String
+    var body: some View {
+        if let target = URL(string: url) {
+            Link(destination: target) {
+                HStack {
+                    Text(title).font(Sky.semibold(15)).foregroundColor(Sky.ink)
+                    Spacer()
+                    Image(systemName: "arrow.up.forward").font(.system(size: 12, weight: .heavy)).foregroundColor(Sky.accent)
+                }
+                .padding(.horizontal, 24).padding(.vertical, 16)
+                .contentShape(Rectangle())
+            }
+        }
+    }
+}
+
+/// Outlined segmented control; the chosen cell fills with ink.
+struct Segmented<Value: Hashable>: View {
+    let options: [(label: LocalizedStringKey, value: Value)]
+    @Binding var selection: Value
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(options.enumerated()), id: \.offset) { index, option in
+                let selected = option.value == selection
+                Button { selection = option.value } label: {
+                    Text(option.label).font(Sky.semibold(13)).lineLimit(1).minimumScaleFactor(0.7)
+                        .foregroundColor(selected ? Sky.ground : Sky.ink)
+                        .padding(.horizontal, 6)
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .background(selected ? Sky.ink : Color.clear)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if index < options.count - 1 { Rectangle().fill(Sky.divider()).frame(width: 1) }
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .overlay(Rectangle().stroke(Sky.divider(), lineWidth: 1))
+        .animation(.easeInOut(duration: 0.12), value: selection)
+    }
+}
+
+/// One choice in a vertical radio group (long labels that don't fit a segmented control).
+struct RadioRow: View {
+    let title: LocalizedStringKey
+    var detail: LocalizedStringKey? = nil
+    let selected: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    Circle().stroke(selected ? Sky.accent : Sky.divider(), lineWidth: 1.5).frame(width: 18, height: 18)
+                    if selected { Circle().fill(Sky.accent).frame(width: 9, height: 9) }
+                }
+                .padding(.top, 1)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title).font(Sky.semibold(15)).foregroundColor(Sky.ink)
+                    if let detail { Text(detail).font(Sky.body(12.5)).foregroundColor(Sky.muted(0.6)) }
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 24).padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Back link + big title + optional description; the top of every pushed screen.
+struct ScreenHeader: View {
+    let back: LocalizedStringKey
+    let title: LocalizedStringKey
+    var subtitle: LocalizedStringKey? = nil
+    let onBack: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            BackButton(title: back, action: onBack).padding(.bottom, 16)
+            Text(title).font(Sky.heading(28)).foregroundColor(Sky.ink)
+            if let subtitle {
+                Text(subtitle).font(Sky.body(14)).foregroundColor(Sky.muted(0.65)).padding(.top, 10)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 20).leading()
+        .overlay(Rule(), alignment: .bottom)
+    }
+}
+
+
+/// Marketing/demo navigation: `-DemoMode YES -DemoScreen <servers|chooser|paste|added|settings>`
 /// opens a screen directly so App Store screenshots can be captured without taps.
 enum DemoRouter {
     static var screen: String? { UserDefaults.standard.bool(forKey: "DemoMode") ? UserDefaults.standard.string(forKey: "DemoScreen") : nil }

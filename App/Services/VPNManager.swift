@@ -44,6 +44,13 @@ final class VPNManager: ObservableObject {
         downloadSpeed = 9_800_000
         speedHistory = [0.22, 0.38, 0.31, 0.64, 0.52, 0.45, 0.7, 0.58, 0.83, 0.88, 0.71, 0.44]
         lastError = nil
+        if settings.customRules.isEmpty {
+            settings.customRules = [
+                RoutingRule(pattern: "geosite:category-ir", action: .direct),
+                RoutingRule(pattern: "domain:youtube.com", action: .proxy),
+                RoutingRule(pattern: "keyword:doubleclick", action: .block, enabled: false),
+            ]
+        }
     }
 
     init() {

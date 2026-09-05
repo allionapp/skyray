@@ -20,14 +20,16 @@ The UI follows the "Modernist" design Ehsan made in Claude Design (project `6538
 `V2Box Add Config.dc.html`): flat and square, ink `#201e1d` on a warm light ground `#f3f2f2`, 2px rules,
 Archivo (display/body) and IBM Plex Mono (data), red `#ec3013` as the one field colour (the connected
 state) and purple `#8013EC` for primary actions. `App/Theme/SkyTheme.swift` holds the tokens, rules,
-button styles, square toggle and boxed field. Fonts are bundled under `App/Resources/Fonts` (SIL OFL).
+button styles, square toggle, boxed field and the settings rows (section header, toggle/value/nav/link
+rows, segmented control, radio row). Fonts are bundled under `App/Resources/Fonts` (SIL OFL).
 
 Screens: Home (no config / off / connected), Servers, and the guided Add-config flow — chooser, paste,
 narrated check (read → validate → reach → measure, all real), added poster, unreadable-link help,
-QR scan, subscription. Settings and the server detail sheet keep the system look for now.
+QR scan, subscription. Settings (radio routing modes, square toggles, segmented pickers, mono values,
+inline tunnel log), Routing rules, Backup & share and the server detail sheet use the same theme.
 
 Demo/screenshot mode: `-DemoMode YES` (fake connected state and demo servers, nothing persisted) plus
-`-DemoScreen servers|chooser|paste|added` opens a screen directly. `scripts/capture-store-shots.sh` uses it.
+`-DemoScreen servers|chooser|paste|added|settings` opens a screen directly. `scripts/capture-store-shots.sh` uses it.
 
 ## Layout
 

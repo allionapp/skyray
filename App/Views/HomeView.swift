@@ -26,6 +26,7 @@ struct HomeView: View {
                 switch DemoRouter.screen {
                 case "servers": showServers = true
                 case "chooser", "paste", "added": showAdd = true
+                case "settings": showSettings = true
                 default: break
                 }
             }

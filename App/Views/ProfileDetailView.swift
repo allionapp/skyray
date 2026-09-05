@@ -10,51 +10,167 @@ struct ProfileDetailView: View {
     @State private var json: String = ""
     @State private var error: String?
     @State private var showShare = false
+    @State private var confirmDelete = false
+    @State private var copied = false
+
+    init(profile: ServerProfile) {
+        _profile = State(initialValue: profile)
+        UITextView.appearance().backgroundColor = .clear
+    }
 
     var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Name")) {
-                    TextField("Name", text: $profile.name)
-                }
-                Section(header: Text("Server")) {
-                    HStack { Text("Protocol"); Spacer(); Text(profile.protocolName.uppercased()).foregroundColor(.secondary) }
-                    HStack { Text("Address"); Spacer(); Text(verbatim: "\(profile.address):\(profile.port)").foregroundColor(.secondary) }
-                    if let ms = profile.latencyMs { HStack { Text("Latency"); Spacer(); LatencyBadge(ms: ms) } }
-                    Button { Task { await profiles.tcpPing(profile); if let p = profiles.profiles.first(where: { $0.id == profile.id }) { profile = p } } } label: {
-                        Label("TCP ping", systemImage: "waveform.path.ecg")
+        ZStack {
+            Sky.ground.ignoresSafeArea()
+            VStack(spacing: 0) {
+                header
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        title
+                        facts
+                        if let link = shareLink { share(link) }
+                        advanced
+                        actions
                     }
-                }
-                if let link = shareLink {
-                    Section(header: Text("Share")) {
-                        QRCodeView(text: link).frame(maxWidth: .infinity).frame(height: 220)
-                        Button { UIPasteboard.general.string = link } label: { Label("Copy link", systemImage: "doc.on.doc") }
-                        Button { showShare = true } label: { Label("Share…", systemImage: "square.and.arrow.up") }
-                    }
-                }
-                Section(header: Text("Outbound JSON (advanced)"), footer: Text(error ?? String(localized: "Edit carefully: this is the Xray outbound used inside the tunnel."))) {
-                    TextEditor(text: $json)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(minHeight: 200)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                }
-                Section {
-                    Button { Task { await vpn.reconnect(profile: profile); dismiss() } } label: { Label("Connect to this server", systemImage: "power") }
-                    Button(role: .destructive) { profiles.delete(profile); dismiss() } label: { Label("Delete", systemImage: "trash") }
+                    .padding(.bottom, 40)
                 }
             }
-            .navigationTitle("Server")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Save") { save() } }
-            }
-            .onAppear { json = prettyJSON(profile.outboundJSON) }
-            .sheet(isPresented: $showShare) { if let link = shareLink { ShareSheet(items: [link]) } }
+            .frame(maxWidth: 640).frame(maxWidth: .infinity)
         }
-        .navigationViewStyle(.stack)
+        .onAppear { json = prettyJSON(profile.outboundJSON) }
+        .sheet(isPresented: $showShare) { if let link = shareLink { ShareSheet(items: [link]) } }
+        .alert(String(format: String(localized: "Delete \"%@\"?"), profile.name), isPresented: $confirmDelete) {
+            Button(String(localized: "Delete"), role: .destructive) { profiles.delete(profile); dismiss() }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        }
     }
+
+    // MARK: Header / title
+
+    private var header: some View {
+        HStack {
+            BackButton(title: "Close") { dismiss() }
+            Spacer()
+            Button("Save") { save() }.buttonStyle(PrimaryButtonStyle(height: 36, fullWidth: false))
+        }
+        .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 14)
+        .overlay(Rule(), alignment: .bottom)
+    }
+
+    private var title: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Rectangle().fill(vpn.isConnected && profiles.selectedProfile?.id == profile.id ? Sky.accent : Sky.ink).frame(width: 8, height: 8)
+                Kicker(text: LocalizedStringKey(profile.protocolName.uppercased() + (profile.core == .singbox ? " · SING-BOX" : "")))
+            }
+            .padding(.bottom, 14)
+            BoxedField(label: "Name") {
+                TextField("Name", text: $profile.name).font(Sky.heading(20)).foregroundColor(Sky.ink)
+            }
+        }
+        .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 20).leading()
+        .overlay(Rule(), alignment: .bottom)
+    }
+
+    // MARK: Facts
+
+    private var facts: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ValueRow(title: "Address", value: "\(profile.address):\(profile.port)")
+            Rule(strong: false)
+            HStack {
+                Text("Latency").font(Sky.body(15)).foregroundColor(Sky.ink)
+                Spacer()
+                if profiles.isPinging {
+                    ProgressView().tint(Sky.accent)
+                } else if let ms = profile.latencyMs {
+                    LatencyBadge(ms: ms)
+                } else {
+                    Text("—").font(Sky.mono(13)).foregroundColor(Sky.muted(0.5))
+                }
+                Button("TCP ping") {
+                    Task {
+                        await profiles.tcpPing(profile)
+                        if let p = profiles.profiles.first(where: { $0.id == profile.id }) { profile.latencyMs = p.latencyMs }
+                    }
+                }
+                .buttonStyle(ChipButtonStyle())
+                .disabled(profiles.isPinging)
+                .padding(.leading, 6)
+            }
+            .padding(.horizontal, 24).padding(.vertical, 12)
+            Rule()
+        }
+    }
+
+    // MARK: Share
+
+    private func share(_ link: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(title: "Share")
+            VStack(alignment: .leading, spacing: 16) {
+                QRCodeView(text: link)
+                    .frame(width: 200, height: 200)
+                    .padding(12)
+                    .background(Color.white)
+                    .overlay(Rectangle().stroke(Sky.divider(), lineWidth: 2))
+                Text(verbatim: link).font(Sky.mono(11)).foregroundColor(Sky.muted(0.55)).lineLimit(2).truncationMode(.middle)
+                HStack(spacing: 10) {
+                    Button {
+                        UIPasteboard.general.string = link
+                        copied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+                    } label: { Label(copied ? "Copied" : "Copy link", systemImage: copied ? "checkmark" : "doc.on.doc") }
+                        .buttonStyle(SecondaryButtonStyle(height: 40, fullWidth: false))
+                    Button { showShare = true } label: { Label("Share…", systemImage: "square.and.arrow.up") }
+                        .buttonStyle(SecondaryButtonStyle(height: 40, fullWidth: false))
+                }
+            }
+            .padding(24)
+            Rule()
+        }
+    }
+
+    // MARK: Advanced JSON
+
+    private var advanced: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(title: "Outbound JSON (advanced)")
+            VStack(alignment: .leading, spacing: 10) {
+                TextEditor(text: $json)
+                    .font(Sky.mono(11.5)).foregroundColor(Sky.ink)
+                    .frame(minHeight: 220)
+                    .autocorrectionDisabled().textInputAutocapitalization(.never)
+                    .padding(8)
+                    .background(Sky.paper)
+                    .overlay(Rectangle().stroke(error == nil ? Sky.divider() : Sky.accent, lineWidth: 2))
+                if let error {
+                    Text(verbatim: error).font(Sky.body(12.5)).foregroundColor(Sky.accentDeep)
+                } else {
+                    Text("Edit carefully: this is the Xray outbound used inside the tunnel.").font(Sky.body(12.5)).foregroundColor(Sky.muted(0.6))
+                }
+            }
+            .padding(.horizontal, 24).padding(.vertical, 20)
+            Rule()
+        }
+    }
+
+    // MARK: Actions
+
+    private var actions: some View {
+        VStack(spacing: 10) {
+            Button { Task { await vpn.reconnect(profile: profile, force: true); dismiss() } } label: {
+                HStack { Text("Connect to this server"); Spacer(); Image(systemName: "power").font(.system(size: 16, weight: .bold)) }
+            }
+            .buttonStyle(PrimaryButtonStyle(height: 54))
+            Button { confirmDelete = true } label: {
+                HStack { Text("Remove this server"); Spacer(); Image(systemName: "trash").font(.system(size: 15, weight: .bold)) }
+            }
+            .buttonStyle(SecondaryButtonStyle(height: 50, tint: Sky.accentDeep))
+        }
+        .padding(24)
+    }
+
+    // MARK: Logic
 
     private var shareLink: String? {
         if let link = profile.shareLink { return link }

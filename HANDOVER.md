@@ -134,7 +134,7 @@ Simulator quirks: the keyboard is a Persian layout, so put text on the clipboard
 
 ## 9. Known gaps / next steps
 
-1. **Design (done 2026-09-05):** the Claude Design "Modernist" screens are implemented (Home states, Servers, the whole Add-config flow). The design file was pulled through Ehsan's logged-in Chrome (`GetFile` RPC on claude.ai/design) into `build/design/` — re-fetch the same way if the design changes. Still on the system look: Settings, Rules, Backup and the server detail sheet; restyle them with `SkyTheme` when there is time.
+1. **Design (done 2026-09-05):** the Claude Design "Modernist" screens are implemented (Home states, Servers, the whole Add-config flow). The design file was pulled through Ehsan's logged-in Chrome (`GetFile` RPC on claude.ai/design) into `build/design/` — re-fetch the same way if the design changes. Settings, Routing rules, Backup & share and the server detail sheet were restyled the same way on 2026-09-05 (building blocks live in `App/Theme/SkyTheme.swift`: `SectionHeader`, `ToggleRow`, `ValueRow`, `NavRow`, `LinkRow`, `Segmented`, `RadioRow`, `ScreenHeader`, `Footnote`, `IconButton`). Every screen is now on the Modernist theme; the only system UI left is alerts, menus and the share/file pickers.
 2. Verify Hysteria2 and WireGuard against real servers.
 3. Test LAN sharing from a second device, Connect-on-demand and kill switch over hours, and background battery use.
 4. Optional features not done: iCloud sync, home-screen widget, more languages (ru, zh), per-app proxy is impossible on iOS.

@@ -6,28 +6,53 @@ import UniformTypeIdentifiers
 struct BackupView: View {
     @EnvironmentObject private var profiles: ProfilesViewModel
     @EnvironmentObject private var vpn: VPNManager
+    @Environment(\.presentationMode) private var presentation
     @State private var exportDocument: BackupDocument?
     @State private var showImporter = false
     @State private var showLinksShare = false
 
     var body: some View {
-        List {
-            Section(header: Text("Backup"), footer: Text("The backup file contains your server credentials. Keep it private.")) {
-                Button {
-                    if let data = profiles.exportBackup(settings: vpn.settings) { exportDocument = BackupDocument(data: data) }
-                } label: { Label("Export backup file", systemImage: "square.and.arrow.up") }
-                Button { showImporter = true } label: { Label("Restore from backup file", systemImage: "square.and.arrow.down") }
-            }
-            Section(header: Text("Share links")) {
-                Button { UIPasteboard.general.string = profiles.exportLinks() } label: { Label("Copy all servers as links", systemImage: "doc.on.doc") }
-                Button { showLinksShare = true } label: { Label("Share all links…", systemImage: "square.and.arrow.up") }
-            }
-            if let message = profiles.message {
-                Section { Text(message).font(.footnote).foregroundColor(.secondary) }
+        ZStack {
+            Sky.ground.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ScreenHeader(back: "Settings", title: "Backup & share",
+                                 subtitle: "Everything you've set up — servers, subscriptions and settings — in one file you keep.") {
+                        presentation.wrappedValue.dismiss()
+                    }
+                    SectionHeader(title: "Backup file")
+                    VStack(spacing: 10) {
+                        Button {
+                            if let data = profiles.exportBackup(settings: vpn.settings) { exportDocument = BackupDocument(data: data) }
+                        } label: { HStack { Text("Export backup file"); Spacer(); Image(systemName: "square.and.arrow.up").font(.system(size: 15, weight: .bold)) } }
+                            .buttonStyle(PrimaryButtonStyle(height: 50))
+                            .disabled(profiles.profiles.isEmpty && profiles.subscriptions.isEmpty)
+                        Button { showImporter = true } label: { HStack { Text("Restore from backup file"); Spacer(); Image(systemName: "square.and.arrow.down").font(.system(size: 15, weight: .bold)) } }
+                            .buttonStyle(SecondaryButtonStyle(height: 50))
+                    }
+                    .padding(24)
+                    Rule()
+                    Footnote("The backup file contains your server credentials. Keep it private.")
+
+                    SectionHeader(title: "Share links", trailing: profiles.profiles.isEmpty ? nil : "\(profiles.profiles.count)")
+                    VStack(spacing: 10) {
+                        Button { UIPasteboard.general.string = profiles.exportLinks() } label: { HStack { Text("Copy all servers as links"); Spacer(); Image(systemName: "doc.on.doc").font(.system(size: 15, weight: .bold)) } }
+                            .buttonStyle(SecondaryButtonStyle(height: 50))
+                        Button { showLinksShare = true } label: { HStack { Text("Share all links…"); Spacer(); Image(systemName: "square.and.arrow.up").font(.system(size: 15, weight: .bold)) } }
+                            .buttonStyle(SecondaryButtonStyle(height: 50))
+                    }
+                    .padding(24)
+                    .disabled(profiles.profiles.isEmpty)
+                    Rule()
+                    if let message = profiles.message {
+                        Footnote(verbatim: message)
+                    }
+                }
+                .padding(.bottom, 40)
+                .frame(maxWidth: 640).frame(maxWidth: .infinity)
             }
         }
-        .listStyle(.insetGrouped)
-        .navigationTitle("Backup & share")
+        .navigationBarHidden(true)
         .fileExporter(isPresented: Binding(get: { exportDocument != nil }, set: { if !$0 { exportDocument = nil } }),
                       document: exportDocument, contentType: .json, defaultFilename: "SkyRay-backup") { _ in exportDocument = nil }
         .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json, .plainText]) { result in
