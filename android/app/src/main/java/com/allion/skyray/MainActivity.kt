@@ -17,6 +17,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.allion.skyray.core.AdsManager
 import com.allion.skyray.core.ShareLinkParser
 import com.allion.skyray.data.ProfileStore
 import com.allion.skyray.service.ProfilesViewModel
@@ -34,6 +35,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         vpnManager = VpnManager(this)
         val store = ProfileStore.get(this)
+        // Deferred past the first frame: starting the ads SDK (it preloads a
+        // video surface for the rewarded creative) while the window is still
+        // being set up can leave that surface painted over the whole
+        // Activity as a black layer on some devices/emulators.
+        window.decorView.post { AdsManager.start(this) }
 
         setContent {
             val navController = rememberNavController()

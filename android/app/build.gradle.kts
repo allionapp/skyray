@@ -88,6 +88,7 @@ dependencies {
     // Ads (Android needs its own AdMob app registration; test IDs until then).
     implementation("com.google.android.gms:play-services-ads:23.6.0")
     implementation("com.google.android.ump:user-messaging-platform:3.1.0")
+    implementation("com.google.android.ump:user-messaging-platform:3.1.0")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.yaml:snakeyaml:2.3")

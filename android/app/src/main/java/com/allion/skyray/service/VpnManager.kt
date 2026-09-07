@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import androidx.activity.result.ActivityResultLauncher
+import com.allion.skyray.core.AdsManager
 import com.allion.skyray.data.AppConstants
 import com.allion.skyray.data.AppSettings
 import com.allion.skyray.data.ProfileStore
@@ -56,14 +57,16 @@ class VpnManager(private val context: Context) {
     private fun startPolling() {
         pollJob?.cancel()
         pollJob = scope.launch {
+            var wasRunning = false
             while (isActive) {
                 val running = SkyRayVpnService.isRunning
                 _isConnected.value = running
                 _connectedSinceMillis.value = if (running) SkyRayVpnService.connectedAtMillis else 0L
                 _lastError.value = SkyRayVpnService.lastError
-                if (running) {
-                    // Stats are best-effort; the service itself is the source of truth.
+                if (running && !wasRunning) {
+                    (context as? Activity)?.let { AdsManager.showAfterConnect(it) }
                 }
+                wasRunning = running
                 kotlinx.coroutines.delay(1000)
             }
         }
