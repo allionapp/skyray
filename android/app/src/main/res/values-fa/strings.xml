@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SkyRay</string>
+
+    <string name="home_no_server_title">هنوز سروری نیست</string>
+    <string name="home_no_server_body">لینک یا کد QR که فروشنده به شما داده را اضافه کنید. حدود یک دقیقه طول می‌کشد.</string>
+    <string name="home_not_connected">متصل نیست</string>
+    <string name="home_off">خاموش</string>
+    <string name="home_off_body">ترافیک شما به‌صورت عادی و بدون سرور خارج می‌شود.</string>
+    <string name="home_connected">متصل</string>
+    <string name="home_selected_server">سرور انتخاب‌شده</string>
+    <string name="home_change">تغییر</string>
+    <string name="home_connect">اتصال</string>
+    <string name="home_disconnect">قطع اتصال</string>
+    <string name="home_add_config">افزودن کانفیگ</string>
+    <string name="home_down">دانلود</string>
+    <string name="home_up">آپلود</string>
+    <string name="home_ping">پینگ</string>
+    <string name="home_used">مصرف</string>
+
+    <string name="servers_title">سرورها</string>
+    <string name="servers_search">جستجوی سرور</string>
+    <string name="servers_empty">هنوز سروری اضافه نشده</string>
+    <string name="servers_test_all">تست تأخیر همه</string>
+    <string name="servers_sort_latency">مرتب‌سازی بر اساس تأخیر</string>
+    <string name="servers_select_fastest">انتخاب سریع‌ترین</string>
+    <string name="servers_delete_unreachable">حذف سرورهای بدون پاسخ</string>
+    <string name="servers_delete_all">حذف همه‌ی سرورها</string>
+    <string name="servers_delete_confirm_title">«%1$s» حذف شود؟</string>
+    <string name="action_delete">حذف</string>
+    <string name="action_cancel">لغو</string>
+
+    <string name="add_title">افزودن کانفیگ</string>
+    <string name="add_subtitle">فقط لینک فروشنده‌ای را اضافه کنید که به آن اعتماد دارید. لینک کانفیگ به اپ می‌گوید همه‌ی ترافیک شما کجا برود.</string>
+    <string name="add_paste_title">چسباندن لینک</string>
+    <string name="add_paste_body">یک خط طولانی که با vless://، vmess://، trojan:// یا ss:// شروع می‌شود</string>
+    <string name="add_scan_title">اسکن کد QR</string>
+    <string name="add_scan_body">دوربین را روی کد مربعی صفحه‌ی فروشنده بگیرید</string>
+    <string name="add_subscription_title">افزودن اشتراک</string>
+    <string name="add_subscription_body">یک آدرس وب که کل فهرست سرورها را به‌روز نگه می‌دارد</string>
+    <string name="add_config_link">لینک کانفیگ</string>
+    <string name="add_paste">چسباندن</string>
+    <string name="add_clear">پاک کردن</string>
+    <string name="add_check_link">بررسی این لینک</string>
+    <string name="add_checking">در حال بررسی لینک</string>
+    <string name="add_checking_body">چند ثانیه طول می‌کشد. می‌توانید اپ را باز بگذارید.</string>
+    <string name="add_link_read">لینک درست خوانده شد</string>
+    <string name="add_server_reached">سرور در دسترس است</string>
+    <string name="add_testing_connection">در حال آزمایش اتصال…</string>
+    <string name="add_added_title">کانفیگ اضافه شد</string>
+    <string name="add_added_body">سرور کار می‌کند. همین حالا روشنش کنید یا بعداً در «سرورها» پیدایش کنید.</string>
+    <string name="add_connect_now">اتصال همین حالا</string>
+    <string name="add_not_now">بعداً</string>
+    <string name="add_could_not_read">این لینک خوانده نشد</string>
+
+    <string name="settings_title">تنظیمات</string>
+    <string name="settings_routing">مسیریابی</string>
+    <string name="settings_routing_proxy_all">همه از پراکسی، شبکه‌ی محلی مستقیم</string>
+    <string name="settings_routing_proxy_all_body">همه‌چیز به‌جز شبکه‌ی محلی از سرور می‌گذرد.</string>
+    <string name="settings_routing_bypass_iran">ایران و شبکه‌ی محلی مستقیم</string>
+    <string name="settings_routing_bypass_iran_body">سایت‌های ایرانی و شبکه‌ی محلی مستقیم می‌مانند؛ بقیه از سرور می‌گذرد.</string>
+    <string name="settings_routing_global">سراسری (همه‌چیز)</string>
+    <string name="settings_routing_global_body">همه‌چیز، حتی شبکه‌ی محلی، از سرور می‌گذرد.</string>
+    <string name="settings_block_ads">مسدودسازی تبلیغات و ردیاب‌ها</string>
+    <string name="settings_dns">DNS</string>
+    <string name="settings_remote_dns">DNS خارجی</string>
+    <string name="settings_direct_dns">DNS مستقیم (ایران)</string>
+    <string name="settings_anti_censorship">ضد سانسور</string>
+    <string name="settings_fragment">تکه‌تکه کردن دست‌دهی TLS (Fragment)</string>
+    <string name="settings_mux">Mux (ادغام اتصال‌ها)</string>
+    <string name="settings_connection">اتصال</string>
+    <string name="settings_connect_on_demand">اتصال خودکار (وصل مجدد)</string>
+    <string name="settings_allow_lan">اجازه‌ی اتصال از شبکه‌ی محلی</string>
+    <string name="settings_core">هسته</string>
+    <string name="settings_privacy">حریم خصوصی</string>
+    <string name="settings_privacy_policy">سیاست حریم خصوصی</string>
+    <string name="settings_support">پشتیبانی</string>
+    <string name="settings_terms">شرایط استفاده</string>
+    <string name="settings_rules">قوانین سفارشی</string>
+    <string name="settings_backup">پشتیبان و اشتراک‌گذاری</string>
+    <string name="settings_theme">پوسته</string>
+
+    <string name="rules_title">قوانین مسیریابی</string>
+    <string name="rules_add">افزودن قانون</string>
+    <string name="rules_pattern_hint">domain:example.com یا 1.2.3.0/24</string>
+    <string name="rules_action">عمل</string>
+    <string name="rules_proxy">پراکسی</string>
+    <string name="rules_direct">مستقیم</string>
+    <string name="rules_block">مسدود</string>
+    <string name="rules_none">قانون سفارشی وجود ندارد.</string>
+
+    <string name="backup_title">پشتیبان و اشتراک‌گذاری</string>
+    <string name="backup_export">خروجی فایل پشتیبان</string>
+    <string name="backup_import">بازیابی از فایل پشتیبان</string>
+    <string name="backup_copy_links">کپی همه‌ی سرورها به‌صورت لینک</string>
+
+    <string name="vpn_permission_denied">اجازه‌ی VPN داده نشد.</string>
+    <string name="common_back">بازگشت</string>
+    <string name="common_save">ذخیره</string>
+    <string name="common_close">بستن</string>
+</resources>

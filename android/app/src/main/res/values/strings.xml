@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SkyRay</string>
+
+    <string name="home_no_server_title">No server yet</string>
+    <string name="home_no_server_body">Add the link or QR code your provider gave you. It takes about a minute.</string>
+    <string name="home_not_connected">Not connected</string>
+    <string name="home_off">Off</string>
+    <string name="home_off_body">Your traffic is going out normally, without the server.</string>
+    <string name="home_connected">Connected</string>
+    <string name="home_selected_server">Selected server</string>
+    <string name="home_change">Change</string>
+    <string name="home_connect">Connect</string>
+    <string name="home_disconnect">Disconnect</string>
+    <string name="home_add_config">Add a config</string>
+    <string name="home_down">Down</string>
+    <string name="home_up">Up</string>
+    <string name="home_ping">Ping</string>
+    <string name="home_used">Used</string>
+
+    <string name="servers_title">Servers</string>
+    <string name="servers_search">Search servers</string>
+    <string name="servers_empty">No servers yet</string>
+    <string name="servers_test_all">Test all latencies</string>
+    <string name="servers_sort_latency">Sort by latency</string>
+    <string name="servers_select_fastest">Select fastest</string>
+    <string name="servers_delete_unreachable">Delete unreachable</string>
+    <string name="servers_delete_all">Delete all servers</string>
+    <string name="servers_delete_confirm_title">Delete \"%1$s\"?</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
+
+    <string name="add_title">Add a config</string>
+    <string name="add_subtitle">Only add links from a provider you trust. A config link tells the app where all your traffic should go.</string>
+    <string name="add_paste_title">Paste a link</string>
+    <string name="add_paste_body">A long line of text starting with vless://, vmess://, trojan:// or ss://</string>
+    <string name="add_scan_title">Scan a QR code</string>
+    <string name="add_scan_body">Point the camera at the square code on your provider\'s page</string>
+    <string name="add_subscription_title">Add a subscription</string>
+    <string name="add_subscription_body">One web address that keeps a whole list of servers up to date</string>
+    <string name="add_config_link">Config link</string>
+    <string name="add_paste">Paste</string>
+    <string name="add_clear">Clear</string>
+    <string name="add_check_link">Check this link</string>
+    <string name="add_checking">Checking your link</string>
+    <string name="add_checking_body">This takes a few seconds. You can leave the app open.</string>
+    <string name="add_link_read">Link read correctly</string>
+    <string name="add_server_reached">Server reached</string>
+    <string name="add_testing_connection">Testing the connection…</string>
+    <string name="add_added_title">Config added</string>
+    <string name="add_added_body">The server works. Turn it on now, or find it any time under Servers.</string>
+    <string name="add_connect_now">Connect now</string>
+    <string name="add_not_now">Not now</string>
+    <string name="add_could_not_read">Couldn\'t read this link</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_routing">Routing</string>
+    <string name="settings_routing_proxy_all">Proxy all, bypass LAN</string>
+    <string name="settings_routing_proxy_all_body">Everything except your local network goes through the server.</string>
+    <string name="settings_routing_bypass_iran">Bypass Iran and LAN</string>
+    <string name="settings_routing_bypass_iran_body">Iranian sites and your local network stay direct; the rest goes through the server.</string>
+    <string name="settings_routing_global">Global (everything)</string>
+    <string name="settings_routing_global_body">Everything, including your local network, goes through the server.</string>
+    <string name="settings_block_ads">Block ads and trackers</string>
+    <string name="settings_dns">DNS</string>
+    <string name="settings_remote_dns">Remote DNS</string>
+    <string name="settings_direct_dns">Direct DNS (Iran)</string>
+    <string name="settings_anti_censorship">Anti-censorship</string>
+    <string name="settings_fragment">Fragment TLS handshake</string>
+    <string name="settings_mux">Mux (multiplex connections)</string>
+    <string name="settings_connection">Connection</string>
+    <string name="settings_connect_on_demand">Connect on demand (auto-reconnect)</string>
+    <string name="settings_allow_lan">Allow connections from LAN</string>
+    <string name="settings_core">Core</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="settings_privacy_policy">Privacy policy</string>
+    <string name="settings_support">Support</string>
+    <string name="settings_terms">Terms of use</string>
+    <string name="settings_rules">Custom rules</string>
+    <string name="settings_backup">Backup &amp; share</string>
+    <string name="settings_theme">Theme</string>
+
+    <string name="rules_title">Routing rules</string>
+    <string name="rules_add">Add rule</string>
+    <string name="rules_pattern_hint">domain:example.com or 1.2.3.0/24</string>
+    <string name="rules_action">Action</string>
+    <string name="rules_proxy">Proxy</string>
+    <string name="rules_direct">Direct</string>
+    <string name="rules_block">Block</string>
+    <string name="rules_none">No custom rules.</string>
+
+    <string name="backup_title">Backup &amp; share</string>
+    <string name="backup_export">Export backup file</string>
+    <string name="backup_import">Restore from backup file</string>
+    <string name="backup_copy_links">Copy all servers as links</string>
+
+    <string name="vpn_permission_denied">VPN permission was not granted.</string>
+    <string name="common_back">Back</string>
+    <string name="common_save">Save</string>
+    <string name="common_close">Close</string>
+</resources>

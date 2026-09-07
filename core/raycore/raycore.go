@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -29,6 +30,15 @@ import (
 
 // XrayInvoke forwards to libXray's JSON API (kept for callers that only see this package).
 func XrayInvoke(requestJSON string) string { return libxray.Invoke(requestJSON) }
+
+// SetEnv sets a process environment variable from within the Go runtime
+// itself. On Android, android.system.Os.setenv() (called from Kotlin) only
+// updates the JVM/libc-visible environ; the Go runtime embedded in this
+// gomobile .so has already snapshotted its own environment by the time that
+// JNI call would run, so xray-core's XRAY_LOCATION_ASSET lookup (used to
+// find geoip.dat/geosite.dat) never sees it. Calling os.Setenv here, before
+// starting Xray, updates the same environment table xray-core reads from.
+func SetEnv(key string, value string) { os.Setenv(key, value) }
 
 var (
 	sbMu       sync.Mutex
