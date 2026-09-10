@@ -1,10 +1,14 @@
 package com.allion.skyray
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBars
@@ -31,6 +35,9 @@ import com.allion.skyray.ui.theme.SkyRayTheme
 class MainActivity : ComponentActivity() {
     private lateinit var vpnManager: VpnManager
 
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op either way */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         vpnManager = VpnManager(this)
@@ -40,6 +47,7 @@ class MainActivity : ComponentActivity() {
         // being set up can leave that surface painted over the whole
         // Activity as a black layer on some devices/emulators.
         window.decorView.post { AdsManager.start(this) }
+        requestNotificationPermissionIfNeeded()
 
         setContent {
             val navController = rememberNavController()
@@ -96,6 +104,19 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
+    }
+
+    /** Android 13+ requires this at runtime or the VPN's foreground-service
+     * notification (and any other notification) silently never shows, even
+     * though the tunnel itself keeps running. */
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     /** skyray://connect, skyray://disconnect, skyray://add?url=<link> */

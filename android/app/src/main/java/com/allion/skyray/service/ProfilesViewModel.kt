@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.allion.skyray.core.RaycoreBridge
 import com.allion.skyray.core.ShareLinkParser
 import com.allion.skyray.core.SingboxConfigBuilder
+import com.allion.skyray.core.SubscriptionFetcher
+import com.allion.skyray.core.SubscriptionLinkResolver
 import com.allion.skyray.core.XrayConfigBuilder
 import com.allion.skyray.data.AppConstants
 import com.allion.skyray.data.CoreKind
@@ -20,6 +22,7 @@ import org.json.JSONObject
 
 /** Result of checking one pasted link end to end, mirroring AddConfigFlow.CheckRunner on iOS. */
 sealed class CheckStep {
+    object Downloading : CheckStep()
     object Parsing : CheckStep()
     data class LinkRead(val profile: ServerProfile) : CheckStep()
     data class Testing(val profile: ServerProfile) : CheckStep()
@@ -42,9 +45,9 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
     private fun persist() = store.saveProfiles(_profiles.value)
 
     fun add(profile: ServerProfile) {
-        _profiles.value = _profiles.value.filterNot {
-            it.address == profile.address && it.port == profile.port && it.protocolName == profile.protocolName
-        } + profile
+        // Identity is the outbound itself: one subscription often carries several
+        // servers on the same host and port that differ only by transport.
+        _profiles.value = _profiles.value.filterNot { it.outboundJson == profile.outboundJson } + profile
         persist()
     }
 
@@ -81,13 +84,31 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
     /** Runs the same real, narrated check the iOS add-config flow shows: parse -> reach -> measure. */
     fun checkLink(text: String, onStep: (CheckStep) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
+            // A subscription URL (or a panel's launcher deep link) has to be
+            // downloaded first; its body is what actually holds the share links.
+            val subscription = if (ShareLinkParser.containsShareLink(text)) null else SubscriptionLinkResolver.resolve(text)
+            val body: String
+            if (subscription != null) {
+                onStep(CheckStep.Downloading)
+                try {
+                    body = SubscriptionFetcher.fetch(subscription.url).body
+                } catch (e: Exception) {
+                    onStep(CheckStep.Failed(e.message ?: "Download failed"))
+                    return@launch
+                }
+            } else {
+                body = text
+            }
+
             onStep(CheckStep.Parsing)
-            val outcome = ShareLinkParser.parse(text)
+            val outcome = ShareLinkParser.parse(body, subscription?.url)
             val profile = outcome.profiles.firstOrNull()
             if (profile == null) {
                 onStep(CheckStep.Failed(outcome.failures.firstOrNull()?.reason ?: "Could not read this link"))
                 return@launch
             }
+            // A subscription carries the provider's whole server list, not one server.
+            outcome.profiles.drop(1).forEach { add(it) }
             onStep(CheckStep.LinkRead(profile))
             onStep(CheckStep.Testing(profile))
             try {

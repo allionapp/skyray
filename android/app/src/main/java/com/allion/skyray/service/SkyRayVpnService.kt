@@ -222,6 +222,9 @@ class SkyRayVpnService : VpnService() {
             .setContentText("Connected")
             .setContentIntent(openIntent)
             .setOngoing(true)
+            // Android 12+ defers a foreground-service notification by up to 10s
+            // by default; VPN status must be visible to the user immediately.
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 

@@ -151,6 +151,7 @@ fun AddConfigScreen(
 }
 
 private fun stepLabel(step: CheckStep): String = when (step) {
+    is CheckStep.Downloading -> "Downloading the subscription…"
     is CheckStep.Parsing -> "Reading the link…"
     is CheckStep.LinkRead -> "Link read correctly"
     is CheckStep.Testing -> "Testing the connection…"
