@@ -11,7 +11,8 @@ import java.net.URL
 object SubscriptionFetcher {
     class FetchException(message: String) : Exception(message)
 
-    data class Response(val body: String, val finalUrl: String)
+    /** [headers] keys are lower-cased: panels are inconsistent about their casing. */
+    data class Response(val body: String, val finalUrl: String, val headers: Map<String, String> = emptyMap())
 
     /** Panels commonly gate on a known client UA, so send one they recognise. */
     private const val USER_AGENT = "SkyRay/1.0 (Android) v2rayNG/1.9 Hiddify"
@@ -37,7 +38,10 @@ object SubscriptionFetcher {
                     return@repeat
                 }
                 if (status !in 200..299) throw FetchException("Subscription server returned HTTP $status.")
-                return Response(connection.inputStream.bufferedReader().readText(), current)
+                val headers = connection.headerFields
+                    .mapNotNull { (key, values) -> key?.lowercase()?.let { it to values.joinToString(", ") } }
+                    .toMap()
+                return Response(connection.inputStream.bufferedReader().readText(), current, headers)
             } finally {
                 connection.disconnect()
             }

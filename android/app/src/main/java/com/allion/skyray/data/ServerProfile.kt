@@ -76,6 +76,17 @@ data class SubscriptionInfo(
 ) {
     val isExpired: Boolean get() = expireEpochSeconds?.let { it * 1000 < System.currentTimeMillis() } ?: false
 
+    val remaining: Long? get() = total?.let { t -> used?.let { u -> (t - u).coerceAtLeast(0) } }
+
+    /** Unlimited plans report total = 0, which must not render as "0 B left". */
+    val hasQuota: Boolean get() = (total ?: 0) > 0 && used != null
+
+    val expiresSoon: Boolean
+        get() = expireEpochSeconds?.let {
+            val millis = it * 1000
+            millis > System.currentTimeMillis() && millis - System.currentTimeMillis() < 3 * 24 * 3600 * 1000L
+        } ?: false
+
     fun toJson(): JSONObject = JSONObject().apply {
         put("url", url); put("title", title); put("used", used); put("total", total)
         put("expire", expireEpochSeconds); put("updateIntervalHours", updateIntervalHours)

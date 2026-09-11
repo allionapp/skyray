@@ -58,6 +58,10 @@ class MainActivity : ComponentActivity() {
                 }
             })
             val vpnPermissionLauncher = rememberVpnPermissionLauncher(vpnManager, profilesViewModel)
+            // Quota and expiry only change server-side, so re-read them on launch.
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                profilesViewModel.refreshStaleSubscriptions(vpnManager.settings.subscriptionAutoUpdateHours)
+            }
 
             SkyRayTheme {
                 NavHost(

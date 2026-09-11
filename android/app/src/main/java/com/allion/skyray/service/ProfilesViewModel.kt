@@ -12,6 +12,7 @@ import com.allion.skyray.data.AppConstants
 import com.allion.skyray.data.CoreKind
 import com.allion.skyray.data.ProfileStore
 import com.allion.skyray.data.ServerProfile
+import com.allion.skyray.data.SubscriptionInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +37,16 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
 
     private val _isPinging = MutableStateFlow(false)
     val isPinging: StateFlow<Boolean> = _isPinging.asStateFlow()
+
+    private val _subscriptions = MutableStateFlow(store.loadSubscriptions())
+    val subscriptions: StateFlow<List<SubscriptionInfo>> = _subscriptions.asStateFlow()
+
+    private val _isRefreshingSubscription = MutableStateFlow(false)
+    val isRefreshingSubscription: StateFlow<Boolean> = _isRefreshingSubscription.asStateFlow()
+
+    /** The plan a given server was imported from, so Home can show its quota. */
+    fun subscriptionFor(profile: ServerProfile?): SubscriptionInfo? =
+        profile?.subscriptionUrl?.let { url -> _subscriptions.value.firstOrNull { it.url == url } }
 
     var message: String? = null
 
@@ -91,7 +102,10 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
             if (subscription != null) {
                 onStep(CheckStep.Downloading)
                 try {
-                    body = SubscriptionFetcher.fetch(subscription.url).body
+                    val response = SubscriptionFetcher.fetch(subscription.url)
+                    body = response.body
+                    // The plan's quota and expiry ride along in the response headers.
+                    updateSubscriptionInfo(subscription.url, response.headers)
                 } catch (e: Exception) {
                     onStep(CheckStep.Failed(e.message ?: "Download failed"))
                     return@launch
@@ -130,6 +144,65 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
                 onStep(CheckStep.Reached(profile, null))
             }
             add(profile)
+        }
+    }
+
+    /**
+     * Reads the plan's state out of the panel's response headers
+     * (`subscription-userinfo`, `profile-title`, `announce`, ...), the same set
+     * ProfilesViewModel.updateSubscriptionInfo reads on iOS.
+     */
+    private fun updateSubscriptionInfo(url: String, headers: Map<String, String>) {
+        val info = _subscriptions.value.firstOrNull { it.url == url }?.copy() ?: SubscriptionInfo(url = url)
+        info.lastUpdated = System.currentTimeMillis()
+
+        headers["subscription-userinfo"]?.let { raw ->
+            val values = raw.split(";").mapNotNull { part ->
+                val kv = part.split("=", limit = 2)
+                if (kv.size == 2) kv[0].trim().lowercase() to kv[1].trim().toLongOrNull() else null
+            }.toMap()
+            val upload = values["upload"]
+            val download = values["download"]
+            if (upload != null || download != null) info.used = (upload ?: 0) + (download ?: 0)
+            values["total"]?.let { info.total = it }
+            values["expire"]?.let { info.expireEpochSeconds = it.takeIf { s -> s > 0 } }
+        }
+        headers["profile-title"]?.let { info.title = decodeHeader(it) }
+        headers["profile-update-interval"]?.trim()?.toIntOrNull()?.let { info.updateIntervalHours = it }
+        headers["profile-web-page-url"]?.trim()?.let { info.webPageUrl = it }
+        headers["support-url"]?.trim()?.let { info.supportUrl = it }
+        headers["announce"]?.let { info.announce = decodeHeader(it) }
+
+        _subscriptions.value = _subscriptions.value.filterNot { it.url == url } + info
+        store.saveSubscriptions(_subscriptions.value)
+    }
+
+    private fun decodeHeader(value: String): String =
+        if (value.startsWith("base64:")) ShareLinkParser.decodeBase64(value.removePrefix("base64:")) ?: value else value
+
+    /** Re-reads usage and expiry from the provider, and re-imports the server list. */
+    fun refreshSubscription(url: String, onDone: (String?) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isRefreshingSubscription.value = true
+            try {
+                val response = SubscriptionFetcher.fetch(url)
+                updateSubscriptionInfo(url, response.headers)
+                ShareLinkParser.parse(response.body, url).profiles.forEach { add(it) }
+                onDone(null)
+            } catch (e: Exception) {
+                onDone(e.message ?: "Update failed")
+            } finally {
+                _isRefreshingSubscription.value = false
+            }
+        }
+    }
+
+    /** Refreshes plans whose own interval (or the app-wide one) has elapsed. */
+    fun refreshStaleSubscriptions(defaultHours: Int) {
+        val now = System.currentTimeMillis()
+        _subscriptions.value.forEach { sub ->
+            val hours = sub.updateIntervalHours ?: defaultHours
+            if (hours > 0 && now - sub.lastUpdated > hours * 3600_000L) refreshSubscription(sub.url)
         }
     }
 

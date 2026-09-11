@@ -6,9 +6,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,8 +34,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.allion.skyray.R
+import com.allion.skyray.data.SubscriptionInfo
 import com.allion.skyray.service.ProfilesViewModel
 import com.allion.skyray.service.VpnManager
 import com.allion.skyray.ui.theme.Sky
@@ -145,6 +149,10 @@ private fun OffBody(
             }
         }
         SkyRule()
+        profilesViewModel.subscriptionFor(selected)?.let { subscription ->
+            QuotaRow(subscription, profilesViewModel)
+            SkyRule()
+        }
         Box(Modifier.weight(1f))
         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(
@@ -170,6 +178,91 @@ private fun OffBody(
             }
         }
     }
+}
+
+/** The plan's remaining data and expiry, as the provider last reported them. */
+@Composable
+private fun QuotaRow(subscription: SubscriptionInfo, profilesViewModel: ProfilesViewModel) {
+    val isRefreshing by profilesViewModel.isRefreshingSubscription.collectAsState()
+    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResourceCompat(R.string.home_plan).uppercase(),
+                style = skySemibold(10),
+                color = Sky.muted(0.5f),
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                if (isRefreshing) stringResourceCompat(R.string.home_plan_updating)
+                else stringResourceCompat(R.string.home_plan_update),
+                style = skySemibold(10),
+                color = if (isRefreshing) Sky.muted(0.4f) else Sky.primary,
+                modifier = Modifier
+                    .clickable(enabled = !isRefreshing) { profilesViewModel.refreshSubscription(subscription.url) }
+                    .padding(start = 12.dp),
+            )
+        }
+        if (subscription.hasQuota) {
+            val total = subscription.total ?: 0
+            val used = subscription.used ?: 0
+            Spacer(Modifier.height(10.dp))
+            Box(Modifier.fillMaxWidth().height(6.dp).background(Sky.ink.copy(alpha = 0.15f))) {
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth((used.toFloat() / total.toFloat()).coerceIn(0f, 1f))
+                        .background(Sky.accent),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                stringResource(R.string.home_plan_used, formatBytes(used), formatBytes(total)),
+                style = skyMono(11),
+                color = Sky.muted(0.6f),
+            )
+            subscription.remaining?.let {
+                Text(
+                    stringResource(R.string.home_plan_remaining, formatBytes(it)),
+                    style = skyMono(11),
+                    color = Sky.muted(0.6f),
+                )
+            }
+        } else if (subscription.used != null) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                stringResource(R.string.home_plan_used_unlimited, formatBytes(subscription.used ?: 0)),
+                style = skyMono(11),
+                color = Sky.muted(0.6f),
+            )
+        }
+        subscription.expireEpochSeconds?.let { seconds ->
+            val date = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM)
+                .format(java.util.Date(seconds * 1000))
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if (subscription.isExpired) stringResource(R.string.home_plan_expired, date)
+                else stringResource(R.string.home_plan_expires, date),
+                style = skyMono(11),
+                color = if (subscription.isExpired || subscription.expiresSoon) Sky.accent else Sky.muted(0.6f),
+            )
+        }
+        subscription.announce?.takeIf { it.isNotBlank() }?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, style = skyBody(13), color = Sky.muted(0.7f))
+        }
+    }
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes < 1024) return "$bytes B"
+    val units = listOf("KB", "MB", "GB", "TB")
+    var value = bytes.toDouble() / 1024
+    var unit = 0
+    while (value >= 1024 && unit < units.lastIndex) {
+        value /= 1024
+        unit++
+    }
+    return String.format(java.util.Locale.US, if (value >= 100) "%.0f %s" else "%.1f %s", value, units[unit])
 }
 
 @Composable

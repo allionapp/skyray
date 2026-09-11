@@ -17,6 +17,14 @@
     <string name="home_up">Up</string>
     <string name="home_ping">Ping</string>
     <string name="home_used">Used</string>
+    <string name="home_plan">Plan</string>
+    <string name="home_plan_update">Update</string>
+    <string name="home_plan_updating">Updating…</string>
+    <string name="home_plan_used">%1$s of %2$s used</string>
+    <string name="home_plan_remaining">%1$s left</string>
+    <string name="home_plan_used_unlimited">%1$s used · unlimited</string>
+    <string name="home_plan_expires">Expires %1$s</string>
+    <string name="home_plan_expired">Expired %1$s</string>
 
     <string name="servers_title">Servers</string>
     <string name="servers_search">Search servers</string>
