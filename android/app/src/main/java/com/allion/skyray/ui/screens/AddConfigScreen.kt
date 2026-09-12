@@ -41,7 +41,7 @@ import com.allion.skyray.ui.theme.skyHeading
 import com.allion.skyray.ui.theme.skyMono
 import com.allion.skyray.ui.theme.skySemibold
 
-private enum class AddStage { PASTE, CHECKING, ADDED, FAILED }
+private enum class AddStage { PASTE, SCAN, CHECKING, ADDED, FAILED }
 
 @Composable
 fun AddConfigScreen(
@@ -78,6 +78,9 @@ fun AddConfigScreen(
                     OutlinedButton(onClick = { clipboard.getText()?.text?.let { text = it } }, shape = RectangleShape) {
                         Text(stringResource(R.string.add_paste))
                     }
+                    OutlinedButton(onClick = { stage = AddStage.SCAN }, shape = RectangleShape) {
+                        Text(stringResource(R.string.add_scan))
+                    }
                     if (text.isNotEmpty()) {
                         OutlinedButton(onClick = { text = "" }, shape = RectangleShape) { Text(stringResource(R.string.add_clear)) }
                     }
@@ -101,6 +104,24 @@ fun AddConfigScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Sky.primary, contentColor = Sky.onField),
                 ) { Text(stringResource(R.string.add_check_link), style = skyHeading(15)) }
             }
+            AddStage.SCAN -> {
+                QrScannerScreen(
+                    onResult = { scanned ->
+                        text = scanned
+                        stage = AddStage.CHECKING
+                        profilesViewModel.checkLink(scanned) { s ->
+                            step = s
+                            when (s) {
+                                is CheckStep.Reached -> { addedProfile = s.profile; stage = AddStage.ADDED }
+                                is CheckStep.Failed -> { failureReason = s.reason; stage = AddStage.FAILED }
+                                else -> {}
+                            }
+                        }
+                    },
+                    onCancel = { stage = AddStage.PASTE },
+                )
+            }
+
             AddStage.CHECKING -> {
                 Spacer(Modifier.weight(1f))
                 CircularProgressIndicator(color = Sky.accent)

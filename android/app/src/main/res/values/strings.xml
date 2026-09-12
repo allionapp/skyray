@@ -48,6 +48,8 @@
     <string name="add_subscription_title">Add a subscription</string>
     <string name="add_subscription_body">One web address that keeps a whole list of servers up to date</string>
     <string name="add_config_link">Config link</string>
+    <string name="add_scan">Scan QR</string>
+    <string name="add_scan_no_permission">SkyRay needs camera access to read a QR code. You can still paste the link instead.</string>
     <string name="add_paste">Paste</string>
     <string name="add_clear">Clear</string>
     <string name="add_check_link">Check this link</string>
