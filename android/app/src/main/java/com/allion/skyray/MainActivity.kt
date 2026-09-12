@@ -11,7 +11,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,7 +69,11 @@ class MainActivity : ComponentActivity() {
                 NavHost(
                     navController = navController,
                     startDestination = "home",
-                    modifier = androidx.compose.ui.Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars),
+                    // union, not two paddings: when the keyboard is up it already
+                    // covers the navigation bar, and the bottom action button has
+                    // to stay above it.
+                    modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.ime)),
                 ) {
                     composable("home") {
                         HomeScreen(
