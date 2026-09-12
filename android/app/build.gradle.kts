@@ -85,9 +85,8 @@ dependencies {
     implementation("androidx.camera:camera-view:1.4.1")
     implementation("com.google.zxing:core:3.5.3")
 
-    // Ads (Android needs its own AdMob app registration; test IDs until then).
+    // Ads. UMP gathers the GDPR/UK consent that has to precede any ad request.
     implementation("com.google.android.gms:play-services-ads:23.6.0")
-    implementation("com.google.android.ump:user-messaging-platform:3.1.0")
     implementation("com.google.android.ump:user-messaging-platform:3.1.0")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
