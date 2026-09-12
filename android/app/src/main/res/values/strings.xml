@@ -36,6 +36,7 @@
     <string name="servers_delete_all">Delete all servers</string>
     <string name="servers_delete_confirm_title">Delete \"%1$s\"?</string>
     <string name="action_delete">Delete</string>
+    <string name="common_cancel">Cancel</string>
     <string name="action_cancel">Cancel</string>
 
     <string name="add_title">Add a config</string>
@@ -61,6 +62,14 @@
     <string name="add_not_now">Not now</string>
     <string name="add_could_not_read">Couldn\'t read this link</string>
 
+    <string name="settings_subscriptions">Subscriptions</string>
+    <string name="settings_subscriptions_auto_update">Auto-update</string>
+    <string name="settings_subscriptions_empty">No subscriptions yet. Add a config link and its servers appear here.</string>
+    <string name="settings_subscription_servers">%1$d servers</string>
+    <string name="settings_subscription_remove_title">Remove \"%1$s\"?</string>
+    <string name="settings_subscription_remove_body">This also removes the %1$d servers it added.</string>
+    <string name="settings_interval_off">Off</string>
+    <string name="settings_interval_daily">Daily</string>
     <string name="settings_title">Settings</string>
     <string name="settings_routing">Routing</string>
     <string name="settings_routing_proxy_all">Proxy all, bypass LAN</string>

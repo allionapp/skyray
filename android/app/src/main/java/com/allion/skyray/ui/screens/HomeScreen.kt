@@ -83,7 +83,7 @@ fun HomeScreen(
         } else if (profiles.isEmpty()) {
             EmptyBody(onAddConfig)
         } else {
-            OffBody(vpnManager, profilesViewModel, vpnPermissionLauncher, onAddConfig, onServers)
+            OffBody(vpnManager, profilesViewModel, vpnPermissionLauncher, onAddConfig, onServers, onSettings)
         }
     }
 }
@@ -128,6 +128,7 @@ private fun OffBody(
     launcher: ActivityResultLauncher<Intent>,
     onAddConfig: () -> Unit,
     onServers: () -> Unit,
+    onSettings: () -> Unit,
 ) {
     val selected = profilesViewModel.selectedProfile(vpnManager.settings)
     Column(Modifier.fillMaxSize()) {
@@ -154,7 +155,7 @@ private fun OffBody(
         }
         SkyRule()
         profilesViewModel.subscriptionFor(selected)?.let { subscription ->
-            QuotaRow(subscription, profilesViewModel)
+            QuotaRow(subscription, profilesViewModel, onSettings)
             SkyRule()
         }
         Box(Modifier.weight(1f))
@@ -186,9 +187,12 @@ private fun OffBody(
 
 /** The plan's remaining data and expiry, as the provider last reported them. */
 @Composable
-private fun QuotaRow(subscription: SubscriptionInfo, profilesViewModel: ProfilesViewModel) {
+private fun QuotaRow(subscription: SubscriptionInfo, profilesViewModel: ProfilesViewModel, onOpenSubscriptions: () -> Unit) {
     val isRefreshing by profilesViewModel.isRefreshingSubscription.collectAsState()
-    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) {
+    Column(
+        Modifier.fillMaxWidth().clickable { onOpenSubscriptions() }
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 stringResourceCompat(R.string.home_plan).uppercase(),

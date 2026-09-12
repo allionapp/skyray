@@ -44,6 +44,11 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
     private val _isRefreshingSubscription = MutableStateFlow(false)
     val isRefreshingSubscription: StateFlow<Boolean> = _isRefreshingSubscription.asStateFlow()
 
+    init {
+        // Self-heal state left behind by bulk server deletes in older builds.
+        dropEmptySubscriptions()
+    }
+
     /** The plan a given server was imported from, so Home can show its quota. */
     fun subscriptionFor(profile: ServerProfile?): SubscriptionInfo? =
         profile?.subscriptionUrl?.let { url -> _subscriptions.value.firstOrNull { it.url == url } }
@@ -65,16 +70,29 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
     fun delete(profile: ServerProfile) {
         _profiles.value = _profiles.value.filterNot { it.id == profile.id }
         persist()
+        dropEmptySubscriptions()
     }
 
     fun deleteAll() {
         _profiles.value = emptyList()
         persist()
+        dropEmptySubscriptions()
     }
 
     fun deleteUnreachable() {
         _profiles.value = _profiles.value.filterNot { (it.latencyMs ?: 0) < 0 }
         persist()
+        dropEmptySubscriptions()
+    }
+
+    /** A link whose servers are all gone is dead weight, and reads as "0 servers". */
+    private fun dropEmptySubscriptions() {
+        val live = _profiles.value.mapNotNull { it.subscriptionUrl }.toSet()
+        val kept = _subscriptions.value.filter { it.url in live }
+        if (kept.size != _subscriptions.value.size) {
+            _subscriptions.value = kept
+            store.saveSubscriptions(kept)
+        }
     }
 
     fun update(profile: ServerProfile) {
@@ -196,6 +214,27 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
             }
         }
     }
+
+    /** Drops a subscription along with every server it brought in. */
+    fun removeSubscription(url: String) {
+        _subscriptions.value = _subscriptions.value.filterNot { it.url == url }
+        store.saveSubscriptions(_subscriptions.value)
+        _profiles.value = _profiles.value.filterNot { it.subscriptionUrl == url }
+        persist()
+    }
+
+    fun refreshAllSubscriptions() {
+        _subscriptions.value.forEach { refreshSubscription(it.url) }
+    }
+
+    /** Which link a server came from, for telling mixed lists apart. */
+    fun subscriptionTitle(profile: ServerProfile): String? =
+        profile.subscriptionUrl?.let { url ->
+            _subscriptions.value.firstOrNull { it.url == url }?.let { it.title ?: it.url }
+        }
+
+    /** How many servers a given subscription contributed. */
+    fun serverCount(url: String): Int = _profiles.value.count { it.subscriptionUrl == url }
 
     /** Refreshes plans whose own interval (or the app-wide one) has elapsed. */
     fun refreshStaleSubscriptions(defaultHours: Int) {

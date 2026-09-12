@@ -90,6 +90,7 @@ fun ServersScreen(
                 ServerRow(
                     profile,
                     selected = profile.id == vpnManager.settings.selectedProfileId,
+                    subscriptionLabel = profilesViewModel.subscriptionTitle(profile),
                     onSelect = { vpnManager.settings = vpnManager.settings.copy(selectedProfileId = profile.id) },
                     onDelete = { profilesViewModel.delete(profile) },
                 )
@@ -108,7 +109,13 @@ fun ServersScreen(
 }
 
 @Composable
-private fun ServerRow(profile: ServerProfile, selected: Boolean, onSelect: () -> Unit, onDelete: () -> Unit) {
+private fun ServerRow(
+    profile: ServerProfile,
+    selected: Boolean,
+    subscriptionLabel: String?,
+    onSelect: () -> Unit,
+    onDelete: () -> Unit,
+) {
     Row(
         Modifier.fillMaxWidth()
             .background(if (selected) Sky.surface else Sky.ground)
@@ -121,6 +128,9 @@ private fun ServerRow(profile: ServerProfile, selected: Boolean, onSelect: () ->
         Column(Modifier.weight(1f)) {
             Text(profile.name, style = skySemibold(15), color = Sky.ink, maxLines = 1)
             Text(profile.subtitle, style = skyMono(11), color = Sky.muted(0.55f), maxLines = 1)
+            subscriptionLabel?.let {
+                Text(it, style = skySemibold(10), color = Sky.muted(0.45f), maxLines = 1)
+            }
         }
         val ms = profile.latencyMs
         if (ms != null) {
