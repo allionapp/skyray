@@ -29,7 +29,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -253,6 +257,29 @@ private fun QuotaRow(subscription: SubscriptionInfo, profilesViewModel: Profiles
     }
 }
 
+@Composable
+private fun TrafficStat(label: String, speed: String, total: String, modifier: Modifier = Modifier) {
+    Column(modifier.padding(horizontal = 16.dp)) {
+        Text(label.uppercase(), style = skySemibold(10), color = Sky.onField.copy(alpha = 0.75f))
+        Spacer(Modifier.height(6.dp))
+        Text(speed, style = skyMono(15), color = Sky.onField)
+        Text(total, style = skyMono(11), color = Sky.onField.copy(alpha = 0.75f))
+    }
+}
+
+private fun formatDuration(millis: Long): String {
+    val total = (millis / 1000).coerceAtLeast(0)
+    val h = total / 3600
+    val m = (total % 3600) / 60
+    val s = total % 60
+    return if (h > 0) String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
+    else String.format(java.util.Locale.US, "%d:%02d", m, s)
+}
+
+private fun formatSpeed(bytesPerSecond: Long): String =
+    if (bytesPerSecond >= 1024 * 1024) String.format(java.util.Locale.US, "%.1f MB/s", bytesPerSecond / 1048576.0)
+    else String.format(java.util.Locale.US, "%d KB/s", bytesPerSecond / 1024)
+
 private fun formatBytes(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"
     val units = listOf("KB", "MB", "GB", "TB")
@@ -268,13 +295,41 @@ private fun formatBytes(bytes: Long): String {
 @Composable
 private fun ConnectedBody(vpnManager: VpnManager, profilesViewModel: ProfilesViewModel, name: String) {
     val connectedSince by vpnManager.connectedSinceMillis.collectAsState()
+    val stats by vpnManager.stats.collectAsState()
+    val selected = profilesViewModel.selectedProfile(vpnManager.settings)
+
+    // Re-reads the clock every second so the session timer ticks.
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(connectedSince) {
+        while (connectedSince > 0L) {
+            now = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 24.dp).padding(top = 34.dp)) {
-            Text(stringResourceCompat(R.string.home_connected).uppercase(), style = skySemibold(11), color = Sky.onField)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResourceCompat(R.string.home_connected).uppercase(), style = skySemibold(11), color = Sky.onField)
+                if (connectedSince > 0L) {
+                    Text(" · ", style = skySemibold(11), color = Sky.onField)
+                    Text(formatDuration(now - connectedSince), style = skyMono(11), color = Sky.onField)
+                }
+            }
             Spacer(Modifier.height(14.dp))
             Text(name, style = skyHeading(40), color = Sky.onField, maxLines = 2)
+            selected?.let {
+                Spacer(Modifier.height(14.dp))
+                Text("${it.address}:${it.port}", style = skyMono(12), color = Sky.onField.copy(alpha = 0.8f), maxLines = 1)
+            }
         }
         Spacer(Modifier.height(30.dp))
+        SkyRule(onField = true)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 18.dp)) {
+            TrafficStat(stringResourceCompat(R.string.home_down), formatSpeed(stats.downSpeed), formatBytes(stats.rxBytes), Modifier.weight(1f))
+            Box(Modifier.width(1.dp).height(46.dp).background(Sky.onField.copy(alpha = 0.45f)))
+            TrafficStat(stringResourceCompat(R.string.home_up), formatSpeed(stats.upSpeed), formatBytes(stats.txBytes), Modifier.weight(1f))
+        }
         SkyRule(onField = true)
         Box(Modifier.weight(1f))
         Column(Modifier.padding(24.dp)) {

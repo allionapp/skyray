@@ -19,7 +19,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-data class TunnelStats(val txBytes: Long, val rxBytes: Long)
+data class TunnelStats(
+    val txBytes: Long,
+    val rxBytes: Long,
+    /** Bytes per second over the last poll, for the live Up/Down readout. */
+    val upSpeed: Long = 0,
+    val downSpeed: Long = 0,
+)
 
 /**
  * App-side controller: starts/stops [SkyRayVpnService] and mirrors its status
@@ -63,6 +69,24 @@ class VpnManager(private val context: Context) {
                 _isConnected.value = running
                 _connectedSinceMillis.value = if (running) SkyRayVpnService.connectedAtMillis else 0L
                 _lastError.value = SkyRayVpnService.lastError
+
+                if (running) {
+                    val tx = SkyRayVpnService.txBytes
+                    val rx = SkyRayVpnService.rxBytes
+                    // The loop ticks once a second, so a delta is already a rate.
+                    _stats.value = TunnelStats(
+                        txBytes = tx,
+                        rxBytes = rx,
+                        upSpeed = (tx - lastTx).coerceAtLeast(0),
+                        downSpeed = (rx - lastRx).coerceAtLeast(0),
+                    )
+                    lastTx = tx
+                    lastRx = rx
+                } else {
+                    _stats.value = TunnelStats(0, 0)
+                    lastTx = 0
+                    lastRx = 0
+                }
                 if (running && !wasRunning) {
                     (context as? Activity)?.let { AdsManager.showAfterConnect(it) }
                 }

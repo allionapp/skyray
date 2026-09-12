@@ -49,6 +49,12 @@ class SkyRayVpnService : VpnService() {
             private set
         @Volatile var connectedAtMillis: Long = 0L
             private set
+
+        /** Bytes the tunnel has sent (upload) and received (download) since connect. */
+        @Volatile var txBytes: Long = 0L
+            private set
+        @Volatile var rxBytes: Long = 0L
+            private set
     }
 
     private var tunFd: ParcelFileDescriptor? = null
@@ -169,6 +175,11 @@ class SkyRayVpnService : VpnService() {
         statsJob?.cancel()
         statsJob = scope.launch {
             while (isRunning) {
+                val stats = currentStats()
+                if (stats.size >= 4) {
+                    txBytes = stats[1]
+                    rxBytes = stats[3]
+                }
                 delay(1000)
             }
         }
@@ -185,6 +196,8 @@ class SkyRayVpnService : VpnService() {
         tunFd = null
         isRunning = false
         connectedAtMillis = 0
+        txBytes = 0
+        rxBytes = 0
         store.appendTunnelLog("Disconnected")
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
