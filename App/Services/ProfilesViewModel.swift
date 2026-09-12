@@ -84,7 +84,18 @@ final class ProfilesViewModel: ObservableObject {
     private func fixSelectionAndPersist() {
         if let id = selectedId, !profiles.contains(where: { $0.id == id }) { selectedId = profiles.first?.id }
         if profiles.isEmpty { selectedId = nil }
+        pruneEmptySubscriptions()
         persist()
+    }
+
+    /// A subscription whose servers have all been deleted still listed its quota
+    /// in Settings while having nothing left to connect to.
+    private func pruneEmptySubscriptions() {
+        let live = Set(profiles.compactMap(\.subscriptionURL))
+        let kept = subscriptions.filter { live.contains($0.url) }
+        guard kept.count != subscriptions.count else { return }
+        subscriptions = kept
+        store.saveSubscriptions(subscriptions)
     }
 
     // MARK: - Import
