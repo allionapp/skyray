@@ -15,11 +15,19 @@ final class ProfilesViewModel: ObservableObject {
     @Published private(set) var isImporting = false
     @Published var message: String?
     @Published private(set) var subscriptions: [SubscriptionInfo] = []
+    /// The subscription being downloaded right now, so only its row says so.
+    @Published private(set) var updatingSubscriptionURL: String?
+    /// Connect to whichever server tests fastest instead of a fixed choice.
+    @Published var isAutomatic: Bool {
+        didSet { store.automaticSelection = isAutomatic }
+    }
+    private var lastPingAll: Date?
 
     private let store = ProfileStore.shared
     private var pingTask: Task<Void, Never>?
 
     init() {
+        isAutomatic = ProfileStore.shared.automaticSelection
         profiles = store.loadProfiles()
         subscriptions = store.loadSubscriptions()
         selectedId = store.selectedProfileId ?? profiles.first?.id
@@ -31,6 +39,45 @@ final class ProfilesViewModel: ObservableObject {
     }
 
     func select(_ profile: ServerProfile) { selectedId = profile.id }
+
+    /// A server the user picked by hand, which ends automatic selection.
+    func choose(_ profile: ServerProfile) {
+        isAutomatic = false
+        select(profile)
+    }
+
+    /// Latencies go stale as networks change; older than this they are retested.
+    var latenciesAreFresh: Bool {
+        lastPingAll.map { Date().timeIntervalSince($0) < 10 * 60 } ?? false
+    }
+
+    /// The server to connect to. In automatic mode that is the fastest one,
+    /// retesting first unless a test ran in the last few minutes.
+    func connectionTarget() async -> ServerProfile? {
+        guard isAutomatic, profiles.count > 1 else { return selectedProfile }
+        if !latenciesAreFresh { await pingAll() }
+        return selectFastest() ?? selectedProfile
+    }
+
+    /// Servers grouped by the subscription they came from; hand-added ones last.
+    var groups: [(title: String, url: String?, servers: [ServerProfile])] {
+        var order: [String?] = []
+        var buckets: [String?: [ServerProfile]] = [:]
+        for p in profiles {
+            if buckets[p.subscriptionURL] == nil { order.append(p.subscriptionURL) }
+            buckets[p.subscriptionURL, default: []].append(p)
+        }
+        let sorted = order.filter { $0 != nil } + order.filter { $0 == nil }
+        return sorted.map { url in
+            let title: String
+            if let url {
+                title = subscriptions.first { $0.url == url }?.title ?? URL(string: url)?.host ?? url
+            } else {
+                title = String(localized: "Added by hand")
+            }
+            return (title, url, buckets[url] ?? [])
+        }
+    }
 
     /// Adds one profile (deduplicated by outbound) and returns the stored copy.
     @discardableResult
@@ -141,7 +188,8 @@ final class ProfilesViewModel: ObservableObject {
             return
         }
         isImporting = true
-        defer { isImporting = false }
+        updatingSubscriptionURL = resolved.url
+        defer { isImporting = false; updatingSubscriptionURL = nil }
         do {
             let (data, http, finalURL) = try await SubscriptionFetcher.fetch(resolved.url)
             guard (200..<300).contains(http.statusCode) else {
@@ -304,6 +352,7 @@ final class ProfilesViewModel: ObservableObject {
             }
         }
         await pingTask?.value
+        if pingTask?.isCancelled == false { lastPingAll = Date() }
         pingTask = nil
         isPinging = false
         persist()

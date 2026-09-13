@@ -71,6 +71,13 @@ final class ProfileStore {
         set { defaults.set(newValue?.uuidString, forKey: AppConstants.selectedProfileKey) }
     }
 
+    /// Kept out of AppSettings: its synthesized decoding would drop every
+    /// stored setting on a build that adds a field. Absent means automatic.
+    var automaticSelection: Bool {
+        get { defaults.object(forKey: AppConstants.automaticSelectionKey) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: AppConstants.automaticSelectionKey) }
+    }
+
     // MARK: - Active profile (what the extension actually reads)
 
     func writeActiveProfile(_ profile: ServerProfile) {

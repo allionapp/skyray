@@ -18,6 +18,7 @@ enum AppConstants {
     static let subscriptionsInfoFile = "subscriptions.json"
     static let tunnelLogFile = "tunnel.log"
     static let selectedProfileKey = "selectedProfileId"
+    static let automaticSelectionKey = "automaticSelection"
 
     static let privacyPolicyURL = "https://allionapp.github.io/skyray-site/privacy.html"
     static let supportURL = "https://allionapp.github.io/skyray-site/support.html"

@@ -6,8 +6,6 @@ struct SettingsView: View {
     @EnvironmentObject private var profiles: ProfilesViewModel
     @EnvironmentObject private var vpn: VPNManager
     @Environment(\.dismiss) private var dismiss
-    @State private var log = ""
-    @State private var dnsText = ""
     @State private var subscriptionToRemove: SubscriptionInfo?
 
     var body: some View {
@@ -18,16 +16,11 @@ struct SettingsView: View {
                     header
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
-                            routing
-                            dns
-                            antiCensorship
-                            connection
-                            lan
                             subscriptions
-                            data
+                            routing
+                            connection
                             appearance
-                            core
-                            tunnelLog
+                            advanced
                             privacy
                         }
                         .padding(.bottom, 40)
@@ -36,10 +29,6 @@ struct SettingsView: View {
                 .frame(maxWidth: 640).frame(maxWidth: .infinity)
             }
             .navigationBarHidden(true)
-            .onAppear {
-                log = ProfileStore.shared.readTunnelLog()
-                dnsText = vpn.settings.dnsServers.joined(separator: ", ")
-            }
             .onChange(of: vpn.settings.connectOnDemand) { _ in Task { await vpn.applySettingsToConfiguration() } }
             .onChange(of: vpn.settings.killSwitch) { _ in Task { await vpn.applySettingsToConfiguration() } }
             .onChange(of: vpn.settings.keepAliveOnSleep) { _ in Task { await vpn.applySettingsToConfiguration() } }
@@ -64,7 +53,7 @@ struct SettingsView: View {
                 Text("Settings").font(Sky.heading(34)).foregroundColor(Sky.ink)
             }
             Spacer()
-            IconButton(systemName: "xmark", accessibility: "Close") { applyDNS(); dismiss() }.padding(.top, 4)
+            IconButton(systemName: "xmark", accessibility: "Close") { dismiss() }.padding(.top, 4)
         }
         .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 16)
         .overlay(Rule(), alignment: .bottom)
@@ -92,10 +81,209 @@ struct SettingsView: View {
                      selected: vpn.settings.routingMode == .global) { vpn.settings.routingMode = .global }
             Rule()
             ToggleRow(title: "Block ads and trackers", detail: "A compact list of ad and tracker domains is dropped inside the tunnel.", isOn: $vpn.settings.blockAds)
+            Rule()
+            Footnote("Changes apply the next time you connect.")
+        }
+    }
+
+    // MARK: Connection
+
+    private var connection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(title: "Connection")
+            ToggleRow(title: "Connect automatically when the app opens", isOn: $vpn.settings.autoConnectOnLaunch)
+            if vpn.settings.autoConnectOnLaunch {
+                VStack(alignment: .leading, spacing: 8) {
+                    Kicker(text: "Auto-connect to")
+                    Segmented(options: [("Last used server", AutoConnectChoice.lastUsed), ("Fastest server", .fastest)],
+                              selection: $vpn.settings.autoConnectChoice)
+                }
+                .padding(.horizontal, 24).padding(.bottom, 18)
+            }
             Rule(strong: false)
+            ToggleRow(title: "Connect on demand (auto-reconnect)", detail: "iOS brings the tunnel back whenever it drops.", isOn: $vpn.settings.connectOnDemand)
+            Rule(strong: false)
+            ToggleRow(title: "Kill switch", detail: "Blocks all traffic while the tunnel is down.", isOn: $vpn.settings.killSwitch)
+            Rule(strong: false)
+            ToggleRow(title: "Stay connected while the screen is locked", isOn: $vpn.settings.keepAliveOnSleep)
+            Rule()
+        }
+        .animation(.easeInOut(duration: 0.15), value: vpn.settings.autoConnectOnLaunch)
+    }
+
+    // MARK: Subscriptions
+
+    private var subscriptions: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(title: "Your subscriptions", trailing: profiles.subscriptions.isEmpty ? nil : "\(profiles.subscriptions.count)")
+            if profiles.subscriptions.isEmpty {
+                Footnote("No subscriptions yet. Add one with the + on Home.")
+            } else {
+                ForEach(profiles.subscriptions) { sub in
+                    subscriptionRow(sub)
+                    Rule(strong: false)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    Kicker(text: "Update automatically")
+                    Segmented(options: [("Off", 0), ("1h", 1), ("6h", 6), ("12h", 12), ("Daily", 24)],
+                              selection: $vpn.settings.subscriptionAutoUpdateHours)
+                }
+                .padding(.horizontal, 24).padding(.vertical, 18)
+            }
+            Rule()
+        }
+    }
+
+    private func subscriptionRow(_ sub: SubscriptionInfo) -> some View {
+        let updating = profiles.updatingSubscriptionURL == sub.url
+        let count = profiles.profiles.filter { $0.subscriptionURL == sub.url }.count
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(sub.title ?? sub.url).font(Sky.semibold(15)).foregroundColor(Sky.ink).lineLimit(1)
+                    Text(verbatim: sub.url).font(Sky.mono(11)).foregroundColor(Sky.muted(0.5)).lineLimit(1).truncationMode(.middle)
+                }
+                Spacer()
+                Button {
+                    Task { await profiles.importSubscription(sub.url) }
+                } label: {
+                    if updating { ProgressView().scaleEffect(0.7).frame(width: 44) } else { Text("Update") }
+                }
+                .buttonStyle(ChipButtonStyle())
+                .disabled(profiles.isImporting)
+                Button("Remove") { subscriptionToRemove = sub }.buttonStyle(ChipButtonStyle())
+            }
+            if let total = sub.total, total > 0, let used = sub.used {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Rectangle().fill(Sky.ink.opacity(0.15))
+                        Rectangle().fill(Sky.accent).frame(width: geo.size.width * CGFloat(min(1, Double(used) / Double(total))))
+                    }
+                }
+                .frame(height: 6).padding(.top, 4)
+                Text(String(format: String(localized: "%@ of %@ used"),
+                            ByteCountFormatter.string(fromByteCount: used, countStyle: .binary),
+                            ByteCountFormatter.string(fromByteCount: total, countStyle: .binary)))
+                    .font(Sky.mono(11.5)).foregroundColor(Sky.muted(0.6))
+            }
+            Text(verbatim: subscriptionFacts(sub, count: count))
+                .font(Sky.mono(11.5)).foregroundColor(sub.isExpired || sub.expiresSoon ? Sky.accentDeep : Sky.muted(0.55))
+            if let announce = sub.announce, !announce.isEmpty {
+                Text(announce).font(Sky.body(12.5)).foregroundColor(Sky.muted(0.7)).padding(.top, 2)
+            }
+        }
+        .padding(.horizontal, 24).padding(.vertical, 16).leading()
+    }
+
+    private func subscriptionFacts(_ sub: SubscriptionInfo, count: Int) -> String {
+        var parts = [String(format: String(localized: "%d servers"), count)]
+        if let expire = sub.expire {
+            parts.append(String(format: String(localized: "Expires %@"), expire.formatted(date: .abbreviated, time: .omitted)))
+        }
+        parts.append(String(format: String(localized: "Updated %@"), sub.lastUpdated.formatted(.relative(presentation: .named))))
+        return parts.joined(separator: " · ")
+    }
+
+    // MARK: Advanced
+
+    private var advanced: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(title: "More")
+            NavRow(title: "Advanced") { AdvancedSettingsView() }
+            Rule(strong: false)
+            NavRow(title: "Backup & share") { BackupView() }
+            Rule()
+        }
+    }
+
+    private var appearance: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(title: "Appearance")
+            VStack(alignment: .leading, spacing: 8) {
+                Kicker(text: "Theme")
+                Segmented(options: [("System", AppTheme.system), ("Light", .light), ("Dark", .dark)], selection: $vpn.settings.theme)
+            }
+            .padding(.horizontal, 24).padding(.vertical, 18)
+            Rule()
+        }
+    }
+
+    // MARK: Privacy
+
+    private var privacy: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(title: "Privacy")
+            Footnote("SkyRay has no analytics of its own. It talks to the servers you add, your subscription URLs, and the latency test URL. A short ad shows after you connect; ads are served by Google AdMob, which may use an advertising identifier — see the privacy policy for details.")
+            Rule(strong: false)
+            LinkRow(title: "Privacy policy", url: AppConstants.privacyPolicyURL)
+            Rule(strong: false)
+            LinkRow(title: "Support", url: AppConstants.supportURL)
+            Rule(strong: false)
+            LinkRow(title: "Terms of use", url: AppConstants.termsURL)
+            Rule()
+            Footnote("Built on Xray-core (MPL-2.0) via libXray and hev-socks5-tunnel (MIT). Geo data from Iran-v2ray-rules.")
+        }
+    }
+
+
+}
+
+/// Everything a typical user never needs to touch: custom rules, DNS,
+/// anti-censorship tweaks, LAN sharing, core details and the tunnel log.
+struct AdvancedSettingsView: View {
+    @EnvironmentObject private var profiles: ProfilesViewModel
+    @EnvironmentObject private var vpn: VPNManager
+    @Environment(\.presentationMode) private var presentation
+    @State private var log = ""
+    @State private var dnsText = ""
+
+    var body: some View {
+        ZStack {
+            Sky.ground.ignoresSafeArea()
+            VStack(spacing: 0) {
+                ScreenHeader(back: "Settings", title: "Advanced",
+                             subtitle: "Leave these as they are unless your provider asks you to change them.") {
+                    applyDNS()
+                    presentation.wrappedValue.dismiss()
+                }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        rules
+                        dns
+                        antiCensorship
+                        latency
+                        lan
+                        core
+                        tunnelLog
+                    }
+                    .padding(.bottom, 40)
+                }
+            }
+            .frame(maxWidth: 640).frame(maxWidth: .infinity)
+        }
+        .navigationBarHidden(true)
+        .onAppear {
+            log = ProfileStore.shared.readTunnelLog()
+            dnsText = vpn.settings.dnsServers.joined(separator: ", ")
+        }
+        .onDisappear { applyDNS() }
+    }
+
+    private var rules: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(title: "Routing")
             NavRow(title: "Custom rules", detail: "\(vpn.settings.customRules.count)") { RulesView() }
             Rule()
-            Footnote("Routing, DNS and fragment changes apply on the next connection.")
+        }
+    }
+
+    private var latency: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(title: "Speed tests")
+            ToggleRow(title: "Test latencies when the app opens", isOn: $vpn.settings.pingOnOpen)
+            Rule(strong: false)
+            ToggleRow(title: "Test speed after updating subscriptions", isOn: $vpn.settings.pingAfterSubscriptionUpdate)
+            Rule()
         }
     }
 
@@ -142,35 +330,6 @@ struct SettingsView: View {
         .animation(.easeInOut(duration: 0.15), value: vpn.settings.fragmentEnabled)
     }
 
-    // MARK: Connection
-
-    private var connection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(title: "Connection")
-            ToggleRow(title: "Connect automatically when the app opens", isOn: $vpn.settings.autoConnectOnLaunch)
-            if vpn.settings.autoConnectOnLaunch {
-                VStack(alignment: .leading, spacing: 8) {
-                    Kicker(text: "Auto-connect to")
-                    Segmented(options: [("Last used server", AutoConnectChoice.lastUsed), ("Fastest server", .fastest)],
-                              selection: $vpn.settings.autoConnectChoice)
-                }
-                .padding(.horizontal, 24).padding(.bottom, 18)
-            }
-            Rule(strong: false)
-            ToggleRow(title: "Connect on demand (auto-reconnect)", detail: "iOS brings the tunnel back whenever it drops.", isOn: $vpn.settings.connectOnDemand)
-            Rule(strong: false)
-            ToggleRow(title: "Kill switch", detail: "Blocks all traffic while the tunnel is down.", isOn: $vpn.settings.killSwitch)
-            Rule(strong: false)
-            ToggleRow(title: "Stay connected while the screen is locked", isOn: $vpn.settings.keepAliveOnSleep)
-            Rule(strong: false)
-            ToggleRow(title: "Test latencies when the app opens", isOn: $vpn.settings.pingOnOpen)
-            Rule(strong: false)
-            ToggleRow(title: "Test speed after updating subscriptions", isOn: $vpn.settings.pingAfterSubscriptionUpdate)
-            Rule()
-        }
-        .animation(.easeInOut(duration: 0.15), value: vpn.settings.autoConnectOnLaunch)
-    }
-
     // MARK: LAN
 
     private var lan: some View {
@@ -180,100 +339,6 @@ struct SettingsView: View {
             Rule()
             Footnote(verbatim: String(format: String(localized: "Other devices on your Wi-Fi can use this phone as a proxy: SOCKS5 on port %lld, HTTP on port %lld."),
                                       Int64(AppConstants.socksPort), Int64(vpn.settings.httpPort)))
-        }
-    }
-
-    // MARK: Subscriptions
-
-    private var subscriptions: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(title: "Subscriptions", trailing: profiles.subscriptions.isEmpty ? nil : "\(profiles.subscriptions.count)")
-            VStack(alignment: .leading, spacing: 8) {
-                Kicker(text: "Auto-update")
-                Segmented(options: [("Off", 0), ("1h", 1), ("6h", 6), ("12h", 12), ("Daily", 24)],
-                          selection: $vpn.settings.subscriptionAutoUpdateHours)
-            }
-            .padding(.horizontal, 24).padding(.vertical, 18)
-            Rule(strong: false)
-            if profiles.subscriptions.isEmpty {
-                Footnote("No subscriptions yet.")
-            } else {
-                ForEach(profiles.subscriptions) { sub in
-                    subscriptionRow(sub)
-                    Rule(strong: false)
-                }
-                Button {
-                    Task { await profiles.updateAllSubscriptions() }
-                } label: {
-                    HStack {
-                        Text("Update all subscriptions now")
-                        Spacer()
-                        if profiles.isImporting { ProgressView().tint(Sky.ink) } else { Image(systemName: "arrow.clockwise").font(.system(size: 14, weight: .bold)) }
-                    }
-                }
-                .buttonStyle(SecondaryButtonStyle(height: 48))
-                .disabled(profiles.isImporting)
-                .padding(24)
-            }
-            Rule()
-        }
-    }
-
-    private func subscriptionRow(_ sub: SubscriptionInfo) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(sub.title ?? sub.url).font(Sky.semibold(15)).foregroundColor(Sky.ink).lineLimit(1)
-                    Text(verbatim: sub.url).font(Sky.mono(11)).foregroundColor(Sky.muted(0.5)).lineLimit(1).truncationMode(.middle)
-                }
-                Spacer()
-                Button("Remove") { subscriptionToRemove = sub }.buttonStyle(ChipButtonStyle())
-            }
-            if let total = sub.total, let used = sub.used {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Rectangle().fill(Sky.ink.opacity(0.15))
-                        Rectangle().fill(Sky.accent).frame(width: geo.size.width * CGFloat(min(1, Double(used) / Double(max(total, 1)))))
-                    }
-                }
-                .frame(height: 6).padding(.top, 4)
-                Text(String(format: String(localized: "%@ of %@ used"),
-                            ByteCountFormatter.string(fromByteCount: used, countStyle: .binary),
-                            ByteCountFormatter.string(fromByteCount: total, countStyle: .binary)))
-                    .font(Sky.mono(11.5)).foregroundColor(Sky.muted(0.6))
-            }
-            if let expire = sub.expire {
-                Text(String(format: String(localized: "Expires %@"), expire.formatted(date: .abbreviated, time: .omitted)))
-                    .font(Sky.mono(11.5)).foregroundColor(sub.isExpired || sub.expiresSoon ? Sky.accentDeep : Sky.muted(0.6))
-            }
-            Text(String(format: String(localized: "Updated %@"), sub.lastUpdated.formatted(date: .abbreviated, time: .shortened)))
-                .font(Sky.mono(11.5)).foregroundColor(Sky.muted(0.5))
-            if let announce = sub.announce, !announce.isEmpty {
-                Text(announce).font(Sky.body(12.5)).foregroundColor(Sky.muted(0.7)).padding(.top, 2)
-            }
-        }
-        .padding(.horizontal, 24).padding(.vertical, 16).leading()
-    }
-
-    // MARK: Data / appearance / core
-
-    private var data: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(title: "Data")
-            NavRow(title: "Backup & share") { BackupView() }
-            Rule()
-        }
-    }
-
-    private var appearance: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(title: "Appearance")
-            VStack(alignment: .leading, spacing: 8) {
-                Kicker(text: "Theme")
-                Segmented(options: [("System", AppTheme.system), ("Light", .light), ("Dark", .dark)], selection: $vpn.settings.theme)
-            }
-            .padding(.horizontal, 24).padding(.vertical, 18)
-            Rule()
         }
     }
 
@@ -330,23 +395,6 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 24).padding(.vertical, 20)
             Rule()
-        }
-    }
-
-    // MARK: Privacy
-
-    private var privacy: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(title: "Privacy")
-            Footnote("SkyRay has no analytics of its own. It talks to the servers you add, your subscription URLs, and the latency test URL. A short ad shows after you connect; ads are served by Google AdMob, which may use an advertising identifier — see the privacy policy for details.")
-            Rule(strong: false)
-            LinkRow(title: "Privacy policy", url: AppConstants.privacyPolicyURL)
-            Rule(strong: false)
-            LinkRow(title: "Support", url: AppConstants.supportURL)
-            Rule(strong: false)
-            LinkRow(title: "Terms of use", url: AppConstants.termsURL)
-            Rule()
-            Footnote("Built on Xray-core (MPL-2.0) via libXray and hev-socks5-tunnel (MIT). Geo data from Iran-v2ray-rules.")
         }
     }
 

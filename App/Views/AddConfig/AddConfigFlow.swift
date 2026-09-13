@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The guided "Add a config" flow from the design: three ways in (paste a link,
-/// scan a QR code, add a subscription), a narrated check, and a clear result.
+/// The guided "Add a config" flow: three ways in (clipboard, QR code, typing),
+/// one check that tells single servers from subscriptions itself, and a result.
 struct AddConfigFlow: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -22,8 +22,10 @@ struct ChooserView: View {
     @State private var clipboardHasText = false
     @State private var goPaste = false
     @State private var goScan = false
-    @State private var goSubscription = false
+    @State private var goCheck = false
     @State private var goDemoAdded = false
+    @State private var clipboardLink = ""
+    @State private var clipboardEmpty = false
     @EnvironmentObject private var profiles: ProfilesViewModel
 
     var body: some View {
@@ -33,20 +35,26 @@ struct ChooserView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     BackButton(title: "Close") { onDone() }.padding(.bottom, 16)
                     Text("Add a config").font(Sky.heading(30)).foregroundColor(Sky.ink)
-                    Text("Pick whichever your provider sent you.").font(Sky.body(14)).foregroundColor(Sky.muted(0.65)).padding(.top, 10)
+                    Text("Use the link or QR code your provider sent. Single servers and subscription links both work.")
+                        .font(Sky.body(14)).foregroundColor(Sky.muted(0.65)).padding(.top, 10)
                 }
                 .padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 20).leading()
                 Rule()
 
-                option(icon: "doc.on.clipboard", tint: Sky.accent, title: "Paste a link",
-                       body: "A long line of text starting with vless://, vmess://, trojan:// or ss://",
-                       badge: clipboardHasText ? "LINK FOUND ON CLIPBOARD" : nil, highlighted: clipboardHasText) { goPaste = true }
+                option(icon: "doc.on.clipboard", tint: Sky.accent, title: "Paste from clipboard",
+                       body: "Copy the link first, then tap here",
+                       badge: clipboardHasText ? String(localized: "TEXT ON CLIPBOARD") : nil, highlighted: clipboardHasText) { pasteFromClipboard() }
+                if clipboardEmpty {
+                    Text("There's no link on the clipboard. Copy it again, or type it in below.")
+                        .font(Sky.body(13)).foregroundColor(Sky.accentDeep)
+                        .padding(.horizontal, 24).padding(.bottom, 16).leading()
+                }
                 Rule(strong: false)
                 option(icon: "qrcode.viewfinder", tint: Sky.ink, title: "Scan a QR code",
                        body: "Point the camera at the square code on your provider's page") { goScan = true }
                 Rule(strong: false)
-                option(icon: "arrow.triangle.2.circlepath", tint: Sky.ink, title: "Add a subscription",
-                       body: "One web address that keeps a whole list of servers up to date") { goSubscription = true }
+                option(icon: "keyboard", tint: Sky.ink, title: "Type the link",
+                       body: "If you can't copy it, enter it by hand") { goPaste = true }
                 Rule()
                 Spacer()
                 HStack(alignment: .top, spacing: 12) {
@@ -59,7 +67,7 @@ struct ChooserView: View {
 
                 NavigationLink(destination: PasteLinkView(onDone: onDone), isActive: $goPaste) { EmptyView() }.hidden()
                 NavigationLink(destination: QRScanView(onDone: onDone), isActive: $goScan) { EmptyView() }.hidden()
-                NavigationLink(destination: SubscriptionView(onDone: onDone), isActive: $goSubscription) { EmptyView() }.hidden()
+                NavigationLink(destination: CheckingView(input: clipboardLink, customName: nil, onDone: onDone), isActive: $goCheck) { EmptyView() }.hidden()
                 if let demo = profiles.profiles.first {
                     NavigationLink(destination: AddedView(profile: demo, latencyMs: demo.latencyMs, reachable: true, onDone: onDone).background(Sky.ground.ignoresSafeArea()).navigationBarHidden(true), isActive: $goDemoAdded) { EmptyView() }.hidden()
                 }
@@ -68,6 +76,7 @@ struct ChooserView: View {
         }
         .navigationBarHidden(true)
         .onAppear {
+            // hasStrings doesn't read the contents, so it raises no paste prompt.
             clipboardHasText = UIPasteboard.general.hasStrings || DemoRouter.screen != nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 switch DemoRouter.screen {
@@ -76,6 +85,19 @@ struct ChooserView: View {
                 default: break
                 }
             }
+        }
+    }
+
+    /// Reads the clipboard only on this tap, and goes straight to the check when
+    /// it holds something the app can use, skipping the text box entirely.
+    private func pasteFromClipboard() {
+        let text = (UIPasteboard.general.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if ShareLinkParser.containsShareLink(text) || SubscriptionLinkResolver.resolve(text) != nil {
+            clipboardEmpty = false
+            clipboardLink = text
+            goCheck = true
+        } else {
+            clipboardEmpty = true
         }
     }
 
@@ -115,9 +137,6 @@ struct PasteLinkView: View {
     @EnvironmentObject private var profiles: ProfilesViewModel
     @Environment(\.presentationMode) private var presentation
     @State private var text = ""
-    @State private var name = ""
-    @State private var editingName = false
-    @State private var parsed: ServerProfile?
     @State private var goCheck = false
     @FocusState private var focused: Bool
 
@@ -129,13 +148,12 @@ struct PasteLinkView: View {
                     HStack {
                         BackButton(title: "Back") { presentation.wrappedValue.dismiss() }
                         Spacer()
-                        Kicker(text: "Step 1 of 2")
                     }
                     .padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 20)
                     Rule()
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Paste your link").font(Sky.heading(28)).foregroundColor(Sky.ink)
-                        Text("Copy the whole line from your provider — it can look very long. That's normal.")
+                        Text("Enter your link").font(Sky.heading(28)).foregroundColor(Sky.ink)
+                        Text("A server link (vless://, vmess://, trojan://, ss://…) or a subscription address (https://…).")
                             .font(Sky.body(14)).foregroundColor(Sky.muted(0.65)).padding(.top, 10).padding(.bottom, 22)
 
                         BoxedField(label: "Config link", highlighted: true) {
@@ -144,47 +162,28 @@ struct PasteLinkView: View {
                                 .frame(minHeight: 84)
                                 .autocorrectionDisabled().textInputAutocapitalization(.never)
                                 .focused($focused)
-                                .onChange(of: text) { _ in reparse() }
                         }
                         HStack(spacing: 10) {
                             Button { if let s = UIPasteboard.general.string { text = s } } label: { Label("Paste", systemImage: "doc.on.clipboard") }
                                 .buttonStyle(SecondaryButtonStyle(height: 40, fullWidth: false))
-                            Button("Clear") { text = ""; parsed = nil }
+                            Button("Clear") { text = "" }
                                 .buttonStyle(SecondaryButtonStyle(height: 40, fullWidth: false))
                                 .disabled(text.isEmpty)
                         }
                         .padding(.top, 12)
 
-                        Rule(strong: false).padding(.top, 20)
-                        HStack(alignment: .center, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Name this server").font(Sky.semibold(14)).foregroundColor(Sky.ink)
-                                if editingName {
-                                    TextField("Name", text: $name).font(Sky.body(14)).foregroundColor(Sky.ink)
-                                } else if let parsed {
-                                    Text(String(format: String(localized: "Taken from the link: %@"), name.isEmpty ? parsed.name : name))
-                                        .font(Sky.body(12)).foregroundColor(Sky.muted(0.55))
-                                } else {
-                                    Text("Paste a link first").font(Sky.body(12)).foregroundColor(Sky.muted(0.55))
-                                }
-                            }
-                            Spacer()
-                            Button(editingName ? "Done" : "Edit") { editingName.toggle() }.buttonStyle(ChipButtonStyle()).disabled(parsed == nil)
-                        }
-                        .padding(.top, 14)
-
                         Button {
                             focused = false
                             goCheck = true
                         } label: {
-                            HStack { Text("Check this link"); Spacer(); Image(systemName: "arrow.forward").font(.system(size: 16, weight: .bold)) }
+                            HStack { Text("Add"); Spacer(); Image(systemName: "arrow.forward").font(.system(size: 16, weight: .bold)) }
                         }
                         .buttonStyle(PrimaryButtonStyle())
                         .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .padding(.top, 22)
                     }
                     .padding(24)
-                    NavigationLink(destination: CheckingView(input: text, customName: editingName || !name.isEmpty ? name : nil, onDone: onDone), isActive: $goCheck) { EmptyView() }.hidden()
+                    NavigationLink(destination: CheckingView(input: text, customName: nil, onDone: onDone), isActive: $goCheck) { EmptyView() }.hidden()
                 }
                 .frame(maxWidth: 640).frame(maxWidth: .infinity)
             }
@@ -192,13 +191,10 @@ struct PasteLinkView: View {
         .navigationBarHidden(true)
         // The clipboard is only read when the user taps Paste: reading it on
         // appear would raise the system paste prompt before they did anything.
-        .onAppear { if DemoRouter.screen == "paste", text.isEmpty { text = DemoRouter.sampleLink; reparse() } }
-    }
-
-    private func reparse() {
-        let outcome = ShareLinkParser.parse(text)
-        parsed = outcome.profiles.first
-        if !editingName { name = parsed?.name ?? "" }
+        .onAppear {
+            if DemoRouter.screen == "paste", text.isEmpty { text = DemoRouter.sampleLink }
+            else { focused = true }
+        }
     }
 }
 
@@ -249,7 +245,7 @@ final class CheckRunner: ObservableObject {
         }
         if let customName, !customName.trimmingCharacters(in: .whitespaces).isEmpty { profile.name = customName }
         states[.read] = .done
-        parsedInfo = (profile.address, profile.port, kind(of: profile))
+        parsedInfo = (profile.address, profile.port, profile.kindLabel)
         try? await Task.sleep(nanoseconds: 350_000_000)
 
         states[.details] = .running
@@ -292,19 +288,8 @@ final class CheckRunner: ObservableObject {
 
         profile.latencyMs = latency ?? (tcp >= 0 ? tcp : -1)
         let added = profiles.add(profile)
-        profiles.select(added)
+        profiles.choose(added)
         result = .added(added, latencyMs: latency ?? (tcp >= 0 ? tcp : nil), reachable: tcp >= 0)
-    }
-
-    private func kind(of p: ServerProfile) -> String {
-        var parts = [p.protocolName.uppercased()]
-        if let d = p.outboundJSON.data(using: .utf8), let ob = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
-            if let stream = ob["streamSettings"] as? [String: Any] {
-                if let n = stream["network"] as? String { parts.append(n == "ws" ? "WebSocket" : n == "raw" || n == "tcp" ? "TCP" : n.uppercased()) }
-                if let s = stream["security"] as? String, s != "none" { parts.append(s == "tls" ? "TLS" : s.capitalized) }
-            } else if let tls = ob["tls"] as? [String: Any], tls["enabled"] as? Bool == true { parts.append("TLS") }
-        }
-        return parts.joined(separator: " · ")
     }
 }
 
@@ -338,8 +323,7 @@ struct CheckingView: View {
 
     private var checking: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Kicker(text: "Step 2 of 2").padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 20)
-            Rule()
+            Rule().padding(.top, 20)
             VStack(alignment: .leading, spacing: 0) {
                 Text("Checking your link").font(Sky.heading(28)).foregroundColor(Sky.ink)
                 Text("This takes a few seconds. You can leave the app open.").font(Sky.body(14)).foregroundColor(Sky.muted(0.65)).padding(.top, 10)
@@ -414,9 +398,6 @@ struct AddedView: View {
     let onDone: () -> Void
     @EnvironmentObject private var vpn: VPNManager
     @EnvironmentObject private var profiles: ProfilesViewModel
-    @State private var showDetails = false
-    @State private var renaming = false
-    @State private var newName = ""
 
     var body: some View {
         ScrollView {
@@ -431,7 +412,7 @@ struct AddedView: View {
                 .background(reachable ? Sky.accent : Sky.ink)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(reachable ? "The server works. Turn it on now, or find it any time under Servers."
+                    Text(reachable ? "The server works. Turn it on now, or pick it any time from the server card on Home."
                                    : "The server was saved but did not answer just now. You can still try to connect, or check the link with your provider.")
                         .font(Sky.body(15)).foregroundColor(Sky.muted(0.75)).padding(.bottom, 22)
                     VStack(spacing: 10) {
@@ -441,30 +422,10 @@ struct AddedView: View {
                             .buttonStyle(PrimaryButtonStyle())
                         Button("Not now") { onDone() }.buttonStyle(SecondaryButtonStyle())
                     }
-                    Rule().padding(.top, 28)
-                    DisclosureGroup(isExpanded: $showDetails) {
-                        Text(verbatim: profile.outboundJSON).font(Sky.mono(11)).foregroundColor(Sky.muted(0.7)).padding(.vertical, 8).textSelection(.enabled)
-                    } label: {
-                        Text("Technical details").font(Sky.semibold(14)).foregroundColor(Sky.ink)
-                    }
-                    .padding(.vertical, 16).accentColor(Sky.muted(0.5))
-                    Rule(strong: false)
-                    Button { newName = profile.name; renaming = true } label: {
-                        HStack { Text("Rename").font(Sky.semibold(14)).foregroundColor(Sky.ink); Spacer(); Image(systemName: "chevron.forward").foregroundColor(Sky.muted(0.5)) }
-                            .padding(.vertical, 16).contentShape(Rectangle())
-                    }.buttonStyle(.plain)
-                    Rule(strong: false)
-                    Button { profiles.delete(profile); onDone() } label: {
-                        Text("Remove this server").font(Sky.semibold(14)).foregroundColor(Sky.accentDeep).padding(.vertical, 16).leading().contentShape(Rectangle())
-                    }.buttonStyle(.plain)
-                    Rule()
                 }
                 .padding(24)
             }
             .frame(maxWidth: 640).frame(maxWidth: .infinity)
-        }
-        .sheet(isPresented: $renaming) {
-            RenameSheet(name: $newName) { var p = profile; p.name = newName; profiles.update(p) }
         }
     }
 }
@@ -472,6 +433,7 @@ struct AddedView: View {
 struct SubscriptionAddedView: View {
     let count: Int
     let onDone: () -> Void
+    @State private var connecting = false
     @EnvironmentObject private var profiles: ProfilesViewModel
     @EnvironmentObject private var vpn: VPNManager
     var body: some View {
@@ -483,11 +445,23 @@ struct SubscriptionAddedView: View {
             }
             .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 26).leading().background(Sky.accent)
             VStack(alignment: .leading, spacing: 10) {
-                Text("The list is saved and will refresh itself. Pick the fastest server and turn it on.").font(Sky.body(15)).foregroundColor(Sky.muted(0.75)).padding(.bottom, 12)
+                Text("The list is saved and keeps itself up to date. SkyRay will test the servers and use the fastest one.").font(Sky.body(15)).foregroundColor(Sky.muted(0.75)).padding(.bottom, 12)
                 Button {
-                    Task { await profiles.pingAll(); if let best = profiles.selectFastest() { await vpn.reconnect(profile: best) }; onDone() }
-                } label: { HStack { Text("Test and connect to the fastest"); Spacer(); Image(systemName: "hare").font(.system(size: 16, weight: .bold)) } }
+                    connecting = true
+                    Task {
+                        profiles.isAutomatic = true
+                        if let best = await profiles.connectionTarget() { await vpn.reconnect(profile: best) }
+                        onDone()
+                    }
+                } label: {
+                    HStack {
+                        Text(connecting ? "Finding the fastest server…" : "Connect to the fastest")
+                        Spacer()
+                        if connecting { ProgressView().tint(Sky.onField) } else { Image(systemName: "bolt.fill").font(.system(size: 16, weight: .bold)) }
+                    }
+                }
                     .buttonStyle(PrimaryButtonStyle())
+                    .disabled(connecting)
                 Button("Not now") { onDone() }.buttonStyle(SecondaryButtonStyle())
             }
             .padding(24)
@@ -616,112 +590,6 @@ struct QRScanView: View {
             var p = Path()
             p.move(to: CGPoint(x: rect.minX, y: rect.maxY)); p.addLine(to: CGPoint(x: rect.minX, y: rect.minY)); p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
             return p
-        }
-    }
-}
-
-// MARK: - 08 Subscription
-
-struct SubscriptionView: View {
-    let onDone: () -> Void
-    @EnvironmentObject private var profiles: ProfilesViewModel
-    @EnvironmentObject private var vpn: VPNManager
-    @Environment(\.presentationMode) private var presentation
-    @State private var url = ""
-    @State private var name = ""
-    @State private var keepUpdated = true
-    @State private var testAfter = false
-    @State private var goCheck = false
-
-    var body: some View {
-        ZStack {
-            Sky.ground.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        BackButton(title: "Back") { presentation.wrappedValue.dismiss() }.padding(.bottom, 16)
-                        Text("Add a subscription").font(Sky.heading(28)).foregroundColor(Sky.ink)
-                        Text("A subscription is one web address that holds your provider's whole server list.")
-                            .font(Sky.body(14)).foregroundColor(Sky.muted(0.65)).padding(.top, 10)
-                    }
-                    .padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 20).leading()
-                    Rule()
-                    VStack(alignment: .leading, spacing: 0) {
-                        BoxedField(label: "Web address") {
-                            TextField("https://…", text: $url).font(Sky.mono(13)).foregroundColor(Sky.ink)
-                                .keyboardType(.URL).autocorrectionDisabled().textInputAutocapitalization(.never)
-                        }
-                        BoxedField(label: "Name (optional)") {
-                            TextField("e.g. My provider", text: $name).font(Sky.body(14)).foregroundColor(Sky.ink)
-                        }
-                        .padding(.top, 16)
-                        Button { if let s = UIPasteboard.general.string { url = s } } label: { Label("Paste", systemImage: "doc.on.clipboard") }
-                            .buttonStyle(SecondaryButtonStyle(height: 40, fullWidth: false)).padding(.top, 12)
-
-                        Rule().padding(.top, 24)
-                        Toggle(isOn: $keepUpdated) {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text("Keep it up to date").font(Sky.semibold(15)).foregroundColor(Sky.ink)
-                                Text("Check for new servers once a day").font(Sky.body(12.5)).foregroundColor(Sky.muted(0.6))
-                            }
-                        }
-                        .toggleStyle(SquareToggleStyle()).padding(.vertical, 18)
-                        Rule(strong: false)
-                        Toggle(isOn: $testAfter) {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text("Test speed after updating").font(Sky.semibold(15)).foregroundColor(Sky.ink)
-                                Text("Puts the fastest server at the top").font(Sky.body(12.5)).foregroundColor(Sky.muted(0.6))
-                            }
-                        }
-                        .toggleStyle(SquareToggleStyle()).padding(.vertical, 18)
-                        Rule()
-
-                        Button {
-                            vpn.settings.subscriptionAutoUpdateHours = keepUpdated ? 24 : 0
-                            vpn.settings.pingAfterSubscriptionUpdate = testAfter
-                            goCheck = true
-                        } label: { HStack { Text("Add subscription"); Spacer(); Image(systemName: "arrow.forward").font(.system(size: 16, weight: .bold)) } }
-                            .buttonStyle(PrimaryButtonStyle())
-                            .disabled(SubscriptionLinkResolver.resolve(url) == nil)
-                            .padding(.top, 24)
-                        Text("We'll show you what it found before anything is saved.").font(Sky.body(12.5)).foregroundColor(Sky.muted(0.6)).padding(.top, 14)
-                    }
-                    .padding(24)
-                    NavigationLink(destination: CheckingView(input: url, customName: name.isEmpty ? nil : name, onDone: onDone), isActive: $goCheck) { EmptyView() }.hidden()
-                }
-                .frame(maxWidth: 640).frame(maxWidth: .infinity)
-            }
-        }
-        .navigationBarHidden(true)
-        .onAppear {
-            keepUpdated = vpn.settings.subscriptionAutoUpdateHours > 0
-            testAfter = vpn.settings.pingAfterSubscriptionUpdate
-        }
-    }
-}
-
-
-/// Small rename sheet (iOS 15 has no text fields inside alerts).
-struct RenameSheet: View {
-    @Binding var name: String
-    let onSave: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        ZStack {
-            Sky.ground.ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Rename").font(Sky.heading(28)).foregroundColor(Sky.ink).padding(.bottom, 20)
-                BoxedField(label: "Name", highlighted: true) {
-                    TextField("Name", text: $name).font(Sky.body(15)).foregroundColor(Sky.ink)
-                }
-                HStack(spacing: 10) {
-                    Button("Save") { onSave(); dismiss() }.buttonStyle(PrimaryButtonStyle(height: 50))
-                    Button("Cancel") { dismiss() }.buttonStyle(SecondaryButtonStyle(height: 50))
-                }
-                .padding(.top, 18)
-                Spacer()
-            }
-            .padding(24)
         }
     }
 }
