@@ -32,6 +32,17 @@ android {
         }
     }
 
+    // Play splits the bundle per device itself; this only shapes the APKs built
+    // for sideloading, where one universal file carries every Go core at once.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = false
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
