@@ -304,11 +304,12 @@ final class ProfilesViewModel: ObservableObject {
 
     /// Pings in batches of five with limited concurrency so hundreds of servers
     /// finish in reasonable time without spawning hundreds of Xray instances.
-    func pingAll() async {
-        guard !isPinging, !profiles.isEmpty else { return }
+    /// `subset` limits the test to those servers, e.g. the ones a subscription just brought in.
+    func pingAll(only subset: [ServerProfile]? = nil) async {
+        let snapshot = subset ?? profiles
+        guard !isPinging, !snapshot.isEmpty else { return }
         isPinging = true
-        pingProgress = (0, profiles.count)
-        let snapshot = profiles
+        pingProgress = (0, snapshot.count)
         // sing-box profiles are pinged one at a time (each is its own tiny instance);
         // Xray profiles go through libXray's batch API, five per call.
         let xrayProfiles = snapshot.filter { $0.core == .xray }
@@ -352,7 +353,7 @@ final class ProfilesViewModel: ObservableObject {
             }
         }
         await pingTask?.value
-        if pingTask?.isCancelled == false { lastPingAll = Date() }
+        if subset == nil, pingTask?.isCancelled == false { lastPingAll = Date() }
         pingTask = nil
         isPinging = false
         persist()

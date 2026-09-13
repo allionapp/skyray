@@ -315,3 +315,5 @@
 "Changes apply the next time you connect." = "تغییرات از اتصال بعدی اعمال می‌شوند.";
 "Leave these as they are unless your provider asks you to change them." = "این‌ها را تغییر ندهید مگر اینکه فروشنده از شما بخواهد.";
 "Speed tests" = "تست سرعت";
+"Delay" = "تأخیر";
+"Or pick a server yourself. Fastest first." = "یا خودتان یک سرور انتخاب کنید. سریع‌ترین‌ها اول هستند.";

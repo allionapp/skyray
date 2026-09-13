@@ -210,7 +210,7 @@ final class CheckRunner: ObservableObject {
     @Published var result: Result?
     @Published var parsedInfo: (address: String, port: Int, kind: String)?
 
-    enum Result { case added(ServerProfile, latencyMs: Int?, reachable: Bool), subscription(count: Int), unreadable(reason: String), cancelled }
+    enum Result { case added(ServerProfile, latencyMs: Int?, reachable: Bool), subscription(url: String, count: Int), unreadable(reason: String), cancelled }
 
     private var task: Task<Void, Never>?
 
@@ -230,9 +230,10 @@ final class CheckRunner: ObservableObject {
         if !ShareLinkParser.containsShareLink(input), SubscriptionLinkResolver.resolve(input) != nil {
             states[.read] = .running
             await profiles.importSubscription(input)
-            let count = profiles.profiles.filter { $0.subscriptionURL == SubscriptionLinkResolver.resolve(input)?.url }.count
+            let url = SubscriptionLinkResolver.resolve(input)?.url ?? input
+            let count = profiles.profiles.filter { $0.subscriptionURL == url }.count
             states[.read] = count > 0 ? .done : .failed
-            result = count > 0 ? .subscription(count: count) : .unreadable(reason: profiles.message ?? "")
+            result = count > 0 ? .subscription(url: url, count: count) : .unreadable(reason: profiles.message ?? "")
             return
         }
 
@@ -307,8 +308,8 @@ struct CheckingView: View {
             switch runner.result {
             case .added(let profile, let ms, let reachable):
                 AddedView(profile: profile, latencyMs: ms, reachable: reachable, onDone: onDone)
-            case .subscription(let count):
-                SubscriptionAddedView(count: count, onDone: onDone)
+            case .subscription(let url, _):
+                SubscriptionAddedView(url: url, onDone: onDone)
             case .unreadable(let reason):
                 LinkErrorView(input: input, reason: reason, onEdit: { presentation.wrappedValue.dismiss() }, onDone: onDone)
             case .cancelled:
@@ -403,7 +404,11 @@ struct AddedView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
-                    Kicker(text: reachable ? "Config added" : "Config added · not reached yet", color: Sky.onField)
+                    HStack(alignment: .top) {
+                        Kicker(text: reachable ? "Config added" : "Config added · not reached yet", color: Sky.onField)
+                        Spacer()
+                        CloseOnField(action: onDone)
+                    }
                     Text(profile.name).font(Sky.heading(42)).foregroundColor(Sky.onField).lineLimit(3).minimumScaleFactor(0.6).padding(.top, 14)
                     Text(verbatim: "\(profile.address):\(profile.port)" + (latencyMs.map { " · \($0) ms" } ?? ""))
                         .font(Sky.mono(12.5, medium: true)).foregroundColor(Sky.onField).padding(.top, 16)
@@ -420,7 +425,6 @@ struct AddedView: View {
                             Task { await vpn.reconnect(profile: profile); onDone() }
                         } label: { HStack { Text("Connect now"); Spacer(); Image(systemName: "power").font(.system(size: 16, weight: .bold)) } }
                             .buttonStyle(PrimaryButtonStyle())
-                        Button("Not now") { onDone() }.buttonStyle(SecondaryButtonStyle())
                     }
                 }
                 .padding(24)
@@ -430,44 +434,181 @@ struct AddedView: View {
     }
 }
 
+/// What a subscription brought in: every server with its ping and real delay,
+/// each with its own Connect, plus a shortcut to whichever tests fastest.
 struct SubscriptionAddedView: View {
-    let count: Int
+    let url: String
     let onDone: () -> Void
-    @State private var connecting = false
     @EnvironmentObject private var profiles: ProfilesViewModel
     @EnvironmentObject private var vpn: VPNManager
+    /// TCP handshake times; transient, only this screen shows them.
+    @State private var tcp: [UUID: Int] = [:]
+    @State private var testing = true
+    @State private var connectingId: UUID?
+    @State private var connectingFastest = false
+
+    private var servers: [ServerProfile] {
+        let list = profiles.profiles.filter { $0.subscriptionURL == url }
+        // Reordering while results arrive would move rows under the finger.
+        guard !testing else { return list }
+        return list.sorted { rank($0) < rank($1) }
+    }
+
+    private func rank(_ p: ServerProfile) -> Int {
+        guard let ms = p.latencyMs else { return Int.max }
+        return ms < 0 ? Int.max - 1 : ms
+    }
+
+    private var title: String? { profiles.subscriptions.first { $0.url == url }?.title }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
-                Kicker(text: "Subscription added", color: Sky.onField)
-                Text(String(format: String(localized: "%d servers"), count)).font(Sky.heading(42)).foregroundColor(Sky.onField).padding(.top, 14)
-                if let title = profiles.subscriptions.last?.title { Text(title).font(Sky.mono(12.5, medium: true)).foregroundColor(Sky.onField).padding(.top, 16) }
+                HStack(alignment: .top) {
+                    Kicker(text: "Subscription added", color: Sky.onField)
+                    Spacer()
+                    CloseOnField(action: onDone)
+                }
+                Text(String(format: String(localized: "%d servers"), servers.count)).font(Sky.heading(42)).foregroundColor(Sky.onField).padding(.top, 6)
+                if let title { Text(title).font(Sky.mono(12.5, medium: true)).foregroundColor(Sky.onField).padding(.top, 10) }
             }
-            .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 26).leading().background(Sky.accent)
+            .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 22).leading().background(Sky.accent)
+
             VStack(alignment: .leading, spacing: 10) {
-                Text("The list is saved and keeps itself up to date. SkyRay will test the servers and use the fastest one.").font(Sky.body(15)).foregroundColor(Sky.muted(0.75)).padding(.bottom, 12)
-                Button {
-                    connecting = true
-                    Task {
-                        profiles.isAutomatic = true
-                        if let best = await profiles.connectionTarget() { await vpn.reconnect(profile: best) }
-                        onDone()
-                    }
-                } label: {
+                Button(action: connectFastest) {
                     HStack {
-                        Text(connecting ? "Finding the fastest server…" : "Connect to the fastest")
+                        Text(connectingFastest ? "Finding the fastest server…" : "Connect to the fastest")
                         Spacer()
-                        if connecting { ProgressView().tint(Sky.onField) } else { Image(systemName: "bolt.fill").font(.system(size: 16, weight: .bold)) }
+                        if connectingFastest { ProgressView().tint(Sky.onField) } else { Image(systemName: "bolt.fill").font(.system(size: 16, weight: .bold)) }
                     }
                 }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(connecting)
-                Button("Not now") { onDone() }.buttonStyle(SecondaryButtonStyle())
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(connectingFastest || connectingId != nil)
+                HStack(spacing: 8) {
+                    if testing {
+                        ProgressView().scaleEffect(0.8)
+                        Text(String(format: String(localized: "Testing %d of %d…"), profiles.pingProgress.done, profiles.pingProgress.total))
+                    } else {
+                        Text("Or pick a server yourself. Fastest first.")
+                    }
+                }
+                .font(Sky.body(12.5)).foregroundColor(Sky.muted(0.6))
+                .padding(.top, 4)
             }
             .padding(24)
-            Spacer()
+            Rule()
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(servers) { server in
+                        row(server)
+                        Rule(strong: false)
+                    }
+                }
+                .padding(.bottom, 24)
+            }
         }
         .frame(maxWidth: 640).frame(maxWidth: .infinity)
+        .task { await runTests() }
+    }
+
+    private func row(_ p: ServerProfile) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(p.name).font(Sky.semibold(15)).foregroundColor(Sky.ink).lineLimit(1).truncationMode(.middle)
+                Text(verbatim: p.kindLabel).font(Sky.mono(10.5)).foregroundColor(Sky.muted(0.5)).lineLimit(1)
+                HStack(spacing: 14) {
+                    metric("Ping", tcp[p.id])
+                    metric("Delay", testing && p.latencyMs == nil ? nil : (p.latencyMs ?? -1))
+                }
+            }
+            Spacer(minLength: 8)
+            Button {
+                connectingId = p.id
+                Task {
+                    profiles.choose(p)
+                    await vpn.reconnect(profile: p)
+                    onDone()
+                }
+            } label: {
+                if connectingId == p.id { ProgressView().tint(Sky.onField).frame(width: 64) } else { Text("Connect") }
+            }
+            .buttonStyle(PrimaryButtonStyle(height: 38, fullWidth: false))
+            .disabled(connectingId != nil || connectingFastest)
+        }
+        .padding(.horizontal, 24).padding(.vertical, 12)
+    }
+
+    /// nil while the test is still running; -1 when the server didn't answer.
+    private func metric(_ label: LocalizedStringKey, _ ms: Int?) -> some View {
+        HStack(spacing: 5) {
+            Text(label).font(Sky.semibold(10.5)).foregroundColor(Sky.muted(0.5))
+            if let ms {
+                Circle().fill(color(ms)).frame(width: 6, height: 6)
+                Text(verbatim: ms < 0 ? "—" : "\(ms) ms").font(Sky.mono(11.5, medium: true))
+                    .foregroundColor(ms < 0 ? Sky.muted(0.45) : Sky.ink)
+            } else {
+                ProgressView().scaleEffect(0.55).frame(width: 14, height: 10)
+            }
+        }
+    }
+
+    private func color(_ ms: Int) -> Color {
+        if ms < 0 { return Sky.accentDeep }
+        if ms < 700 { return Color(hex: 0x1E9E5A) }
+        if ms < 1500 { return Color(hex: 0xE0A100) }
+        return Sky.accent
+    }
+
+    private func runTests() async {
+        let list = profiles.profiles.filter { $0.subscriptionURL == url }
+        for i in profiles.profiles.indices where profiles.profiles[i].subscriptionURL == url {
+            var p = profiles.profiles[i]; p.latencyMs = nil; profiles.update(p)
+        }
+        async let delays: Void = profiles.pingAll(only: list)
+        await withTaskGroup(of: (UUID, Int).self) { group in
+            var next = 0
+            func enqueue() {
+                guard next < list.count else { return }
+                let p = list[next]; next += 1
+                group.addTask { (p.id, await TCPPing.measure(host: p.address, port: p.port)) }
+            }
+            for _ in 0..<8 { enqueue() }
+            for await (id, ms) in group {
+                tcp[id] = ms
+                enqueue()
+            }
+        }
+        await delays
+        // A test started elsewhere (after-update setting) makes ours a no-op; its results still land here.
+        while profiles.isPinging { try? await Task.sleep(nanoseconds: 200_000_000) }
+        testing = false
+    }
+
+    private func connectFastest() {
+        connectingFastest = true
+        Task {
+            while testing { try? await Task.sleep(nanoseconds: 200_000_000) }
+            profiles.isAutomatic = true
+            let fastest = servers.first { ($0.latencyMs ?? -1) > 0 }
+            if let fastest { profiles.select(fastest) }
+            if let target = fastest ?? profiles.selectedProfile { await vpn.reconnect(profile: target) }
+            onDone()
+        }
+    }
+}
+
+/// Close button for the red result headers.
+private struct CloseOnField: View {
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark").font(.system(size: 15, weight: .heavy)).foregroundColor(Sky.onField)
+                .frame(width: 36, height: 36)
+                .overlay(Rectangle().stroke(Sky.onField.opacity(0.6), lineWidth: 1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Close"))
     }
 }
 
