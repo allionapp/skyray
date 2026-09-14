@@ -29,6 +29,8 @@ sealed class CheckStep {
     data class Testing(val profile: ServerProfile) : CheckStep()
     data class Reached(val profile: ServerProfile, val latencyMs: Int?) : CheckStep()
     data class Failed(val reason: String) : CheckStep()
+    /** A subscription went in whole; the result screen tests its servers itself. */
+    data class SubscriptionAdded(val url: String, val count: Int) : CheckStep()
 }
 
 class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
@@ -41,22 +43,71 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
     private val _subscriptions = MutableStateFlow(store.loadSubscriptions())
     val subscriptions: StateFlow<List<SubscriptionInfo>> = _subscriptions.asStateFlow()
 
-    private val _isRefreshingSubscription = MutableStateFlow(false)
-    val isRefreshingSubscription: StateFlow<Boolean> = _isRefreshingSubscription.asStateFlow()
+    /** The subscription being downloaded right now, so only its row says so. */
+    private val _updatingSubscriptionUrl = MutableStateFlow<String?>(null)
+    val updatingSubscriptionUrl: StateFlow<String?> = _updatingSubscriptionUrl.asStateFlow()
+
+    private val _selectedId = MutableStateFlow(store.selectedProfileId)
+    val selectedId: StateFlow<String?> = _selectedId.asStateFlow()
+
+    /** Connect to whichever server tests fastest instead of a fixed choice. */
+    private val _isAutomatic = MutableStateFlow(store.automaticSelection)
+    val isAutomatic: StateFlow<Boolean> = _isAutomatic.asStateFlow()
+
+    private val _pingProgress = MutableStateFlow(0 to 0)
+    val pingProgress: StateFlow<Pair<Int, Int>> = _pingProgress.asStateFlow()
+    private var lastPingAll = 0L
 
     init {
         // Self-heal state left behind by bulk server deletes in older builds.
         dropEmptySubscriptions()
     }
 
-    /** The plan a given server was imported from, so Home can show its quota. */
-    fun subscriptionFor(profile: ServerProfile?): SubscriptionInfo? =
-        profile?.subscriptionUrl?.let { url -> _subscriptions.value.firstOrNull { it.url == url } }
-
     var message: String? = null
 
-    fun selectedProfile(settings: com.allion.skyray.data.AppSettings): ServerProfile? =
-        profiles.value.firstOrNull { it.id == settings.selectedProfileId } ?: profiles.value.firstOrNull()
+    fun selectedProfile(): ServerProfile? =
+        profiles.value.firstOrNull { it.id == _selectedId.value } ?: profiles.value.firstOrNull()
+
+    fun select(profile: ServerProfile) {
+        _selectedId.value = profile.id
+        store.selectedProfileId = profile.id
+    }
+
+    /** A server the user picked by hand, which ends automatic selection. */
+    fun choose(profile: ServerProfile) {
+        setAutomatic(false)
+        select(profile)
+    }
+
+    fun setAutomatic(on: Boolean) {
+        _isAutomatic.value = on
+        store.automaticSelection = on
+    }
+
+    /** Latencies go stale as networks change; older than this they are retested. */
+    val latenciesAreFresh: Boolean
+        get() = System.currentTimeMillis() - lastPingAll < 10 * 60_000L
+
+    /**
+     * The server to connect to. In automatic mode that is the fastest one,
+     * retesting first unless a test ran in the last few minutes.
+     */
+    suspend fun connectionTarget(): ServerProfile? {
+        if (!_isAutomatic.value || _profiles.value.size < 2) return selectedProfile()
+        if (!latenciesAreFresh) pingAll()
+        return selectFastest()?.also { select(it) } ?: selectedProfile()
+    }
+
+    data class Group(val title: String, val url: String?, val servers: List<ServerProfile>)
+
+    /** Servers grouped by the subscription they came from; hand-added ones last. */
+    fun groups(profiles: List<ServerProfile>, subscriptions: List<SubscriptionInfo>): List<Group> {
+        val byUrl = profiles.groupBy { it.subscriptionUrl }
+        return byUrl.keys.sortedBy { it == null }.map { url ->
+            val title = url?.let { u -> subscriptions.firstOrNull { it.url == u }?.title ?: android.net.Uri.parse(u).host ?: u }
+            Group(title ?: "", url, byUrl[url].orEmpty())
+        }
+    }
 
     private fun persist() = store.saveProfiles(_profiles.value)
 
@@ -105,10 +156,8 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
         persist()
     }
 
-    fun selectFastest(): ServerProfile? {
-        val fastest = _profiles.value.filter { (it.latencyMs ?: -1) >= 0 }.minByOrNull { it.latencyMs!! }
-        return fastest
-    }
+    fun selectFastest(): ServerProfile? =
+        _profiles.value.filter { (it.latencyMs ?: -1) > 0 }.minByOrNull { it.latencyMs!! }
 
     /** Runs the same real, narrated check the iOS add-config flow shows: parse -> reach -> measure. */
     fun checkLink(text: String, onStep: (CheckStep) -> Unit) {
@@ -139,8 +188,11 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
                 onStep(CheckStep.Failed(outcome.failures.firstOrNull()?.reason ?: "Could not read this link"))
                 return@launch
             }
-            // A subscription carries the provider's whole server list, not one server.
-            outcome.profiles.drop(1).forEach { add(it) }
+            if (subscription != null) {
+                outcome.profiles.forEach { add(it) }
+                onStep(CheckStep.SubscriptionAdded(subscription.url, outcome.profiles.size))
+                return@launch
+            }
             onStep(CheckStep.LinkRead(profile))
             onStep(CheckStep.Testing(profile))
             try {
@@ -201,7 +253,7 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
     /** Re-reads usage and expiry from the provider, and re-imports the server list. */
     fun refreshSubscription(url: String, onDone: (String?) -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
-            _isRefreshingSubscription.value = true
+            _updatingSubscriptionUrl.value = url
             try {
                 val response = SubscriptionFetcher.fetch(url)
                 updateSubscriptionInfo(url, response.headers)
@@ -210,7 +262,7 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
             } catch (e: Exception) {
                 onDone(e.message ?: "Update failed")
             } finally {
-                _isRefreshingSubscription.value = false
+                _updatingSubscriptionUrl.value = null
             }
         }
     }
@@ -223,15 +275,20 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
         persist()
     }
 
+    /** TCP handshake time to the server itself, or -1. */
+    suspend fun tcpLatency(profile: ServerProfile): Int = withContext(Dispatchers.IO) {
+        runCatching {
+            java.net.Socket().use { socket ->
+                val start = System.currentTimeMillis()
+                socket.connect(java.net.InetSocketAddress(profile.address, profile.port), 5000)
+                (System.currentTimeMillis() - start).toInt()
+            }
+        }.getOrDefault(-1)
+    }
+
     fun refreshAllSubscriptions() {
         _subscriptions.value.forEach { refreshSubscription(it.url) }
     }
-
-    /** Which link a server came from, for telling mixed lists apart. */
-    fun subscriptionTitle(profile: ServerProfile): String? =
-        profile.subscriptionUrl?.let { url ->
-            _subscriptions.value.firstOrNull { it.url == url }?.let { it.title ?: it.url }
-        }
 
     /** How many servers a given subscription contributed. */
     fun serverCount(url: String): Int = _profiles.value.count { it.subscriptionUrl == url }
@@ -245,39 +302,60 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
         }
     }
 
-    fun tcpPing(profile: ServerProfile) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = runCatching {
-                java.net.Socket().use { socket ->
-                    val start = System.currentTimeMillis()
-                    socket.connect(java.net.InetSocketAddress(profile.address, profile.port), AppConstants.PING_TIMEOUT_SECONDS * 1000)
-                    (System.currentTimeMillis() - start).toInt()
+    /**
+     * Real delay through each server: libXray's batch ping, five outbounds per
+     * call and three calls at once; sing-box servers one by one. [subset]
+     * limits the test, e.g. to the servers a subscription just brought in.
+     */
+    suspend fun pingAll(subset: List<ServerProfile>? = null) {
+        val snapshot = subset ?: _profiles.value
+        if (_isPinging.value || snapshot.isEmpty()) return
+        _isPinging.value = true
+        _pingProgress.value = 0 to snapshot.size
+        try {
+            val chunks = snapshot.filter { it.core == CoreKind.xray }.chunked(AppConstants.PING_BATCH_SIZE) +
+                snapshot.filter { it.core == CoreKind.singbox }.map { listOf(it) }
+            val gate = kotlinx.coroutines.sync.Semaphore(3)
+            kotlinx.coroutines.coroutineScope {
+                chunks.forEach { chunk ->
+                    launch(Dispatchers.IO) {
+                        gate.acquire()
+                        try {
+                            val results = pingChunk(chunk)
+                            applyLatencies(results)
+                        } finally {
+                            gate.release()
+                        }
+                    }
                 }
-            }.getOrNull()
-            val updated = profile.copy(latencyMs = result ?: -1)
-            update(updated)
-        }
-    }
-
-    fun pingAll() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _isPinging.value = true
-            val current = _profiles.value
-            for (p in current) {
-                withContext(Dispatchers.IO) { tcpPingSync(p) }
             }
+            if (subset == null) lastPingAll = System.currentTimeMillis()
+            persist()
+        } finally {
             _isPinging.value = false
         }
     }
 
-    private fun tcpPingSync(profile: ServerProfile) {
-        val result = runCatching {
-            java.net.Socket().use { socket ->
-                val start = System.currentTimeMillis()
-                socket.connect(java.net.InetSocketAddress(profile.address, profile.port), AppConstants.PING_TIMEOUT_SECONDS * 1000)
-                (System.currentTimeMillis() - start).toInt()
-            }
-        }.getOrNull()
-        update(profile.copy(latencyMs = result ?: -1))
+    private fun pingChunk(chunk: List<ServerProfile>): List<Pair<String, Int>> = runCatching {
+        if (chunk.size == 1 && chunk[0].core == CoreKind.singbox) {
+            val r = RaycoreBridge.singboxPing(chunk[0].outboundJson, AppConstants.PING_URL_PLAIN, AppConstants.PING_TIMEOUT_SECONDS * 1000)
+            listOf(chunk[0].id to if (r.success) r.delayMs else -1)
+        } else {
+            val results = RaycoreBridge.pingBatch(chunk.map { JSONObject(it.outboundJson) }, AppConstants.PING_TIMEOUT_SECONDS, AppConstants.PING_URL)
+            chunk.mapIndexed { i, p -> p.id to (results.getOrNull(i)?.takeIf { it.success }?.delayMs ?: -1) }
+        }
+    }.getOrElse { chunk.map { it.id to -1 } }
+
+    @Synchronized
+    private fun applyLatencies(results: List<Pair<String, Int>>) {
+        val byId = results.toMap()
+        _profiles.value = _profiles.value.map { p -> byId[p.id]?.let { p.copy(latencyMs = it) } ?: p }
+        val (done, total) = _pingProgress.value
+        _pingProgress.value = (done + results.size) to total
+    }
+
+    /** Clears latencies so a fresh test shows as pending rather than stale numbers. */
+    fun clearLatencies(ids: Set<String>) {
+        _profiles.value = _profiles.value.map { if (it.id in ids) it.copy(latencyMs = null) else it }
     }
 }

@@ -25,6 +25,27 @@ data class ServerProfile(
     val subtitle: String
         get() = "${protocolName.uppercase()} · $address:$port" + if (core == CoreKind.singbox) " · sing-box" else ""
 
+    /** "VLESS · XHTTP · TLS": what tells servers apart when their names only differ in the tail. */
+    val kindLabel: String
+        get() {
+            val parts = mutableListOf(protocolName.uppercase())
+            runCatching {
+                val ob = JSONObject(outboundJson)
+                val stream = ob.optJSONObject("streamSettings")
+                if (stream != null) {
+                    stream.optString("network").takeIf { it.isNotEmpty() }?.let { n ->
+                        parts += when (n) { "ws" -> "WebSocket"; "raw", "tcp" -> "TCP"; else -> n.uppercase() }
+                    }
+                    stream.optString("security").takeIf { it.isNotEmpty() && it != "none" }?.let { sec ->
+                        parts += if (sec == "tls") "TLS" else sec.replaceFirstChar { it.uppercase() }
+                    }
+                } else if (ob.optJSONObject("tls")?.optBoolean("enabled") == true) {
+                    parts += "TLS"
+                }
+            }
+            return parts.joinToString(" · ")
+        }
+
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
         put("name", name)

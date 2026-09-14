@@ -31,6 +31,7 @@ import com.allion.skyray.service.VpnManager
 import com.allion.skyray.ui.screens.AddConfigScreen
 import com.allion.skyray.ui.screens.HomeScreen
 import com.allion.skyray.ui.screens.ServersScreen
+import com.allion.skyray.ui.screens.AdvancedSettingsScreen
 import com.allion.skyray.ui.screens.SettingsScreen
 import com.allion.skyray.ui.theme.SkyRayTheme
 
@@ -90,7 +91,7 @@ class MainActivity : ComponentActivity() {
                             profilesViewModel = profilesViewModel,
                             vpnManager = vpnManager,
                             onBack = { navController.popBackStack() },
-                            onAddConfig = { navController.navigate("add") },
+                            onReconnect = { vpnManager.connect(it, vpnPermissionLauncher) },
                         )
                     }
                     composable("add") {
@@ -102,7 +103,15 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("settings") {
-                        SettingsScreen(vpnManager = vpnManager, profilesViewModel = profilesViewModel, onClose = { navController.popBackStack() })
+                        SettingsScreen(
+                            vpnManager = vpnManager,
+                            profilesViewModel = profilesViewModel,
+                            onClose = { navController.popBackStack() },
+                            onAdvanced = { navController.navigate("advanced") },
+                        )
+                    }
+                    composable("advanced") {
+                        AdvancedSettingsScreen(vpnManager = vpnManager, onBack = { navController.popBackStack() })
                     }
                 }
             }
@@ -153,7 +162,6 @@ private fun rememberVpnPermissionLauncher(
     profilesViewModel: ProfilesViewModel,
 ) = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
     if (result.resultCode == android.app.Activity.RESULT_OK) {
-        val settings = vpnManager.settings
-        profilesViewModel.selectedProfile(settings)?.let { vpnManager.startService(it) }
+        profilesViewModel.selectedProfile()?.let { vpnManager.startService(it) }
     }
 }

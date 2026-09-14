@@ -109,8 +109,7 @@ class VpnManager(private val context: Context) {
     }
 
     fun startService(profile: ServerProfile) {
-        settings.selectedProfileId = profile.id
-        store.saveSettings(settings)
+        store.selectedProfileId = profile.id
         val intent = Intent(context, SkyRayVpnService::class.java).apply {
             action = AppConstants.VPN_ACTION_CONNECT
             putExtra(AppConstants.EXTRA_OUTBOUND_JSON, profile.outboundJson)

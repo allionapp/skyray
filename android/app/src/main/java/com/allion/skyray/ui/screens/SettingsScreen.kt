@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -53,7 +55,7 @@ import com.allion.skyray.ui.theme.skyMono
 import com.allion.skyray.ui.theme.skySemibold
 
 @Composable
-fun SettingsScreen(vpnManager: VpnManager, profilesViewModel: ProfilesViewModel, onClose: () -> Unit) {
+fun SettingsScreen(vpnManager: VpnManager, profilesViewModel: ProfilesViewModel, onClose: () -> Unit, onAdvanced: () -> Unit) {
     var settings by remember { mutableStateOf(vpnManager.settings) }
     val context = LocalContext.current
 
@@ -86,23 +88,20 @@ fun SettingsScreen(vpnManager: VpnManager, profilesViewModel: ProfilesViewModel,
                 update { it.copy(routingMode = RoutingMode.global) }
             }
             ToggleRow(stringResource(R.string.settings_block_ads), settings.blockAds) { update { s -> s.copy(blockAds = it) } }
-
-            SectionHeader(stringResource(R.string.settings_dns))
-            LabeledField(stringResource(R.string.settings_remote_dns), settings.remoteDns) { update { s -> s.copy(remoteDns = it) } }
-            LabeledField(stringResource(R.string.settings_direct_dns), settings.directDns) { update { s -> s.copy(directDns = it) } }
-
-            SectionHeader(stringResource(R.string.settings_anti_censorship))
-            ToggleRow(stringResource(R.string.settings_fragment), settings.fragmentEnabled) { update { s -> s.copy(fragmentEnabled = it) } }
-            ToggleRow(stringResource(R.string.settings_mux), settings.muxEnabled) { update { s -> s.copy(muxEnabled = it) } }
+            Text(stringResource(R.string.settings_changes_next_connect), style = skyBody(12), color = Sky.muted(0.6f), modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
 
             SectionHeader(stringResource(R.string.settings_connection))
             ToggleRow(stringResource(R.string.settings_connect_on_demand), settings.connectOnDemand) { update { s -> s.copy(connectOnDemand = it) } }
-            ToggleRow(stringResource(R.string.settings_allow_lan), settings.allowLan) { update { s -> s.copy(allowLan = it) } }
 
-            SectionHeader(stringResource(R.string.settings_core))
-            ValueRow("Xray core", RaycoreBridge.xrayVersion())
-            ValueRow("sing-box core", RaycoreBridge.singboxVersion())
-            ValueRow("Local SOCKS port", AppConstants.SOCKS_PORT.toString())
+            SectionHeader(stringResource(R.string.settings_more))
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onAdvanced).padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.settings_advanced), style = skySemibold(15), color = Sky.ink, modifier = Modifier.weight(1f))
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = Sky.muted(0.45f))
+            }
+            SkyRule(strong = false)
 
             SectionHeader(stringResource(R.string.settings_privacy))
             LinkRow(stringResource(R.string.settings_privacy_policy), AppConstants.PRIVACY_POLICY_URL, context)
@@ -121,16 +120,36 @@ private fun SubscriptionsSection(
     onAutoUpdateChange: (Int) -> Unit,
 ) {
     val subscriptions by profilesViewModel.subscriptions.collectAsState()
-    val isRefreshing by profilesViewModel.isRefreshingSubscription.collectAsState()
+    val profiles by profilesViewModel.profiles.collectAsState()
+    val updatingUrl by profilesViewModel.updatingSubscriptionUrl.collectAsState()
     var pendingRemoval by remember { mutableStateOf<SubscriptionInfo?>(null) }
 
     SectionHeader(
-        if (subscriptions.isEmpty()) stringResource(R.string.settings_subscriptions)
-        else stringResource(R.string.settings_subscriptions) + " (${subscriptions.size})",
+        if (subscriptions.isEmpty()) stringResource(R.string.settings_your_subscriptions)
+        else stringResource(R.string.settings_your_subscriptions) + " (${subscriptions.size})",
     )
 
+    if (subscriptions.isEmpty()) {
+        Text(
+            stringResource(R.string.settings_subscriptions_empty),
+            style = skyBody(13), color = Sky.muted(0.6f),
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
+        )
+        return
+    }
+    subscriptions.forEach { sub ->
+        SubscriptionRow(
+            sub = sub,
+            serverCount = profiles.count { it.subscriptionUrl == sub.url },
+            isRefreshing = updatingUrl == sub.url,
+            onUpdate = { profilesViewModel.refreshSubscription(sub.url) },
+            onRemove = { pendingRemoval = sub },
+        )
+        SkyRule(strong = false)
+    }
+
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 14.dp)) {
-        Text(stringResource(R.string.settings_subscriptions_auto_update).uppercase(), style = skySemibold(10), color = Sky.muted(0.5f))
+        Text(stringResource(R.string.settings_update_automatically).uppercase(), style = skySemibold(10), color = Sky.muted(0.5f))
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(
@@ -153,25 +172,6 @@ private fun SubscriptionsSection(
         }
     }
     SkyRule()
-
-    if (subscriptions.isEmpty()) {
-        Text(
-            stringResource(R.string.settings_subscriptions_empty),
-            style = skyBody(13), color = Sky.muted(0.6f),
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
-        )
-    } else {
-        subscriptions.forEach { sub ->
-            SubscriptionRow(
-                sub = sub,
-                serverCount = profilesViewModel.serverCount(sub.url),
-                isRefreshing = isRefreshing,
-                onUpdate = { profilesViewModel.refreshSubscription(sub.url) },
-                onRemove = { pendingRemoval = sub },
-            )
-            SkyRule()
-        }
-    }
 
     pendingRemoval?.let { sub ->
         AlertDialog(
@@ -228,9 +228,14 @@ private fun SubscriptionRow(
             )
         }
         Spacer(Modifier.height(8.dp))
+        val facts = mutableListOf(stringResource(R.string.settings_subscription_servers, serverCount))
+        sub.expireEpochSeconds?.let { seconds ->
+            val date = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(seconds * 1000))
+            facts += if (sub.isExpired) stringResource(R.string.home_plan_expired, date) else stringResource(R.string.home_plan_expires, date)
+        }
         Text(
-            stringResource(R.string.settings_subscription_servers, serverCount),
-            style = skyMono(11), color = Sky.muted(0.6f),
+            facts.joinToString(" · "),
+            style = skyMono(11), color = if (sub.isExpired || sub.expiresSoon) Sky.accentDeep else Sky.muted(0.6f),
         )
         if (sub.hasQuota) {
             val used = sub.used ?: 0
@@ -313,4 +318,45 @@ private fun LinkRow(label: String, url: String, context: android.content.Context
         Text(label, style = skySemibold(15), color = Sky.ink)
     }
     SkyRule(strong = false)
+}
+
+/** Everything a typical user never needs to touch: DNS, anti-censorship, LAN sharing and core details. */
+@Composable
+fun AdvancedSettingsScreen(vpnManager: VpnManager, onBack: () -> Unit) {
+    var settings by remember { mutableStateOf(vpnManager.settings) }
+
+    fun update(block: (com.allion.skyray.data.AppSettings) -> com.allion.skyray.data.AppSettings) {
+        settings = block(settings)
+        vpnManager.settings = settings
+    }
+
+    Column(Modifier.fillMaxSize().background(Sky.ground)) {
+        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 24.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back), tint = Sky.accent) }
+        }
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 18.dp)) {
+            Text(stringResource(R.string.settings_advanced), style = skyHeading(30), color = Sky.ink)
+            Spacer(Modifier.height(8.dp))
+            Text(stringResource(R.string.settings_advanced_body), style = skyBody(14), color = Sky.muted(0.65f))
+        }
+        SkyRule()
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            SectionHeader(stringResource(R.string.settings_dns))
+            LabeledField(stringResource(R.string.settings_remote_dns), settings.remoteDns) { update { s -> s.copy(remoteDns = it) } }
+            LabeledField(stringResource(R.string.settings_direct_dns), settings.directDns) { update { s -> s.copy(directDns = it) } }
+
+            SectionHeader(stringResource(R.string.settings_anti_censorship))
+            ToggleRow(stringResource(R.string.settings_fragment), settings.fragmentEnabled) { update { s -> s.copy(fragmentEnabled = it) } }
+            ToggleRow(stringResource(R.string.settings_mux), settings.muxEnabled) { update { s -> s.copy(muxEnabled = it) } }
+
+            SectionHeader(stringResource(R.string.settings_lan))
+            ToggleRow(stringResource(R.string.settings_allow_lan), settings.allowLan) { update { s -> s.copy(allowLan = it) } }
+
+            SectionHeader(stringResource(R.string.settings_core))
+            ValueRow("Xray core", RaycoreBridge.xrayVersion())
+            ValueRow("sing-box core", RaycoreBridge.singboxVersion())
+            ValueRow("Local SOCKS port", AppConstants.SOCKS_PORT.toString())
+            Spacer(Modifier.height(40.dp))
+        }
+    }
 }

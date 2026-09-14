@@ -12,6 +12,18 @@ import java.io.File
  */
 class ProfileStore private constructor(context: Context) {
     private val dir: File = context.filesDir
+    /** Kept apart from settings.json: the settings screen writes back its own
+     * copy of AppSettings, which would undo a selection made meanwhile. */
+    private val selection = context.getSharedPreferences("selection", Context.MODE_PRIVATE)
+
+    var selectedProfileId: String?
+        get() = selection.getString("selectedProfileId", null) ?: loadSettings().selectedProfileId
+        set(value) = selection.edit().putString("selectedProfileId", value).apply()
+
+    /** Absent means automatic, the default for new and existing users alike. */
+    var automaticSelection: Boolean
+        get() = selection.getBoolean("automaticSelection", true)
+        set(value) = selection.edit().putBoolean("automaticSelection", value).apply()
 
     private fun file(name: String) = File(dir, name)
 
