@@ -156,7 +156,7 @@ struct HomeView: View {
         Button { showServers = true } label: {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 14) {
-                    Image(systemName: profiles.isAutomatic ? "bolt.fill" : "server.rack")
+                    Image(systemName: showsAutomatic ? "bolt.fill" : "server.rack")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(onField ? Sky.onField : Sky.primary)
                         .frame(width: 40, height: 40)
@@ -184,13 +184,16 @@ struct HomeView: View {
         .buttonStyle(.plain)
     }
 
+    /// With a single server there is nothing to choose between.
+    private var showsAutomatic: Bool { profiles.isAutomatic && !vpn.isConnected && profiles.profiles.count > 1 }
+
     private var cardTitle: String {
-        if profiles.isAutomatic && !vpn.isConnected { return String(localized: "Automatic · fastest") }
+        if showsAutomatic { return String(localized: "Automatic · fastest") }
         return profiles.selectedProfile?.name ?? ""
     }
 
     private var cardDetail: String {
-        if profiles.isAutomatic && !vpn.isConnected {
+        if showsAutomatic {
             return String(format: String(localized: "Picks the best of %d servers"), profiles.profiles.count)
         }
         guard let p = profiles.selectedProfile else { return "" }

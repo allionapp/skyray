@@ -145,7 +145,8 @@ struct ServerPickerView: View {
     }
 
     private var bestLine: String {
-        if let best = fastest { return String(format: String(localized: "Right now: %@"), best.name) }
+        if let best = fastest { // Isolated so a Latin name keeps its order inside Persian text.
+            return String(format: String(localized: "Right now: %@"), "\u{2066}\(best.name)\u{2069}") }
         return String(localized: "Tests the servers and connects to the quickest")
     }
 
