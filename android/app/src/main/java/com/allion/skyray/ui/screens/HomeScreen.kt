@@ -210,7 +210,7 @@ private fun LiveSpeeds(vpnManager: VpnManager) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(icon, null, tint = Sky.onField, modifier = Modifier.size(15.dp))
                 Spacer(Modifier.width(4.dp))
-                Text(formatSpeed(speed), style = skyMono(13, medium = true), color = Sky.onField)
+                Text(ltr(formatSpeed(speed)), style = skyMono(13, medium = true), color = Sky.onField)
             }
         }
     }
