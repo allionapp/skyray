@@ -107,6 +107,11 @@ fun SettingsScreen(vpnManager: VpnManager, profilesViewModel: ProfilesViewModel,
             LinkRow(stringResource(R.string.settings_privacy_policy), AppConstants.PRIVACY_POLICY_URL, context)
             LinkRow(stringResource(R.string.settings_support), AppConstants.SUPPORT_URL, context)
             LinkRow(stringResource(R.string.settings_terms), AppConstants.TERMS_URL, context)
+            Text(
+                stringResource(R.string.settings_credits),
+                style = skyBody(12), color = Sky.muted(0.55f),
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+            )
             Spacer(Modifier.height(40.dp))
         }
     }

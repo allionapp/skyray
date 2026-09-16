@@ -73,6 +73,24 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
         store.selectedProfileId = profile.id
     }
 
+    /** The free Cloudflare WARP entry, added once and kept like any other server. */
+    fun addWarp(name: String): ServerProfile {
+        _profiles.value.firstOrNull { it.core == CoreKind.warp }?.let { return it }
+        val profile = ServerProfile(
+            name = name,
+            protocolName = "warp",
+            address = "cloudflare",
+            port = 443,
+            outboundJson = "{}",
+            core = CoreKind.warp,
+        )
+        _profiles.value = _profiles.value + profile
+        persist()
+        return profile
+    }
+
+    fun hasWarp(): Boolean = _profiles.value.any { it.core == CoreKind.warp }
+
     /** A server the user picked by hand, which ends automatic selection. */
     fun choose(profile: ServerProfile) {
         setAutomatic(false)
@@ -93,19 +111,31 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
      * retesting first unless a test ran in the last few minutes.
      */
     suspend fun connectionTarget(): ServerProfile? {
-        if (!_isAutomatic.value || _profiles.value.size < 2) return selectedProfile()
+        val selected = selectedProfile()
+        // WARP is a deliberate choice, not something automatic mode overrides.
+        if (selected?.core == CoreKind.warp) return selected
+        if (!_isAutomatic.value || _profiles.value.count { it.core != CoreKind.warp } < 2) return selected
         if (!latenciesAreFresh) pingAll()
-        return selectFastest()?.also { select(it) } ?: selectedProfile()
+        return selectFastest()?.also { select(it) } ?: selected
     }
 
     data class Group(val title: String, val url: String?, val servers: List<ServerProfile>)
 
+    companion object {
+        /** Stands in for a subscription URL so WARP gets its own group. */
+        const val WARP_GROUP = "warp://free"
+    }
+
     /** Servers grouped by the subscription they came from; hand-added ones last. */
     fun groups(profiles: List<ServerProfile>, subscriptions: List<SubscriptionInfo>): List<Group> {
-        val byUrl = profiles.groupBy { it.subscriptionUrl }
-        return byUrl.keys.sortedBy { it == null }.map { url ->
-            val title = url?.let { u -> subscriptions.firstOrNull { it.url == u }?.title ?: android.net.Uri.parse(u).host ?: u }
-            Group(title ?: "", url, byUrl[url].orEmpty())
+        val byUrl = profiles.groupBy { if (it.core == CoreKind.warp) WARP_GROUP else it.subscriptionUrl }
+        // WARP first, then the subscriptions, then whatever was added by hand.
+        return byUrl.keys.sortedBy { if (it == WARP_GROUP) 0 else if (it != null) 1 else 2 }.map { url ->
+            val title = when {
+                url == null || url == WARP_GROUP -> ""
+                else -> subscriptions.firstOrNull { it.url == url }?.title ?: android.net.Uri.parse(url).host ?: url
+            }
+            Group(title, url, byUrl[url].orEmpty())
         }
     }
 
@@ -308,7 +338,8 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
      * limits the test, e.g. to the servers a subscription just brought in.
      */
     suspend fun pingAll(subset: List<ServerProfile>? = null) {
-        val snapshot = subset ?: _profiles.value
+        // WARP has no outbound of its own, so neither core can test it.
+        val snapshot = (subset ?: _profiles.value).filterNot { it.core == CoreKind.warp }
         if (_isPinging.value || snapshot.isEmpty()) return
         _isPinging.value = true
         _pingProgress.value = 0 to snapshot.size

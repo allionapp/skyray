@@ -147,8 +147,13 @@ fun ServersScreen(
             groups.forEach { group ->
                 item(key = "group-${group.url}") {
                     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 22.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        val label = when (group.url) {
+                            ProfilesViewModel.WARP_GROUP -> stringResource(R.string.servers_free_group)
+                            null -> stringResource(R.string.servers_added_by_hand)
+                            else -> group.title
+                        }
                         Text(
-                            (group.url?.let { group.title } ?: stringResource(R.string.servers_added_by_hand)).uppercase(),
+                            label.uppercase(),
                             style = skySemibold(11), color = Sky.muted(0.55f), maxLines = 1,
                         )
                         Spacer(Modifier.width(8.dp))

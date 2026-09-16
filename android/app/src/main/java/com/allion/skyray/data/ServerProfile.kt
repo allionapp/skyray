@@ -3,7 +3,13 @@ package com.allion.skyray.data
 import org.json.JSONObject
 import java.util.UUID
 
-enum class CoreKind { xray, singbox }
+enum class CoreKind {
+    xray,
+    singbox,
+
+    /** Cloudflare WARP through the Aether core; carries no outbound of its own. */
+    warp,
+}
 
 /**
  * One proxy server. [outboundJson] is a single outbound object for [core],

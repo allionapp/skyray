@@ -48,12 +48,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.allion.skyray.R
 import com.allion.skyray.core.ShareLinkParser
+import com.allion.skyray.core.WarpCore
 import com.allion.skyray.core.SubscriptionLinkResolver
 import com.allion.skyray.data.ServerProfile
 import com.allion.skyray.service.CheckStep
@@ -71,7 +73,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
-private enum class AddStage { CHOOSE, TYPE, SCAN, CHECKING, ADDED, SUBSCRIPTION, FAILED }
+private enum class AddStage { CHOOSE, TYPE, SCAN, CHECKING, ADDED, SUBSCRIPTION, WARP, FAILED }
 
 /**
  * Adding a config: three ways in (clipboard, QR code, typing), one check that
@@ -93,6 +95,8 @@ fun AddConfigScreen(
     var failureReason by remember { mutableStateOf("") }
     var clipboardEmpty by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    val warpName = stringResource(R.string.warp_name)
 
     fun check(input: String) {
         stage = AddStage.CHECKING
@@ -140,6 +144,20 @@ fun AddConfigScreen(
                 }
                 if (clipboardEmpty) {
                     Text(stringResource(R.string.add_clipboard_empty), style = skyBody(13), color = Sky.accentDeep, modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 16.dp))
+                }
+                SkyRule(strong = false)
+                OptionRow(
+                    Icons.Filled.Bolt,
+                    stringResource(R.string.warp_option_title),
+                    stringResource(
+                        if (WarpCore.isSupported(context)) R.string.warp_option_body else R.string.warp_unavailable,
+                    ),
+                ) {
+                    if (WarpCore.isSupported(context)) {
+                        added = profilesViewModel.addWarp(warpName)
+                        profilesViewModel.choose(added!!)
+                        stage = AddStage.WARP
+                    }
                 }
                 SkyRule(strong = false)
                 OptionRow(Icons.Filled.QrCodeScanner, stringResource(R.string.add_scan_title), stringResource(R.string.add_scan_body)) { stage = AddStage.SCAN }
@@ -200,6 +218,19 @@ fun AddConfigScreen(
                     ResultHeader(stringResource(R.string.add_added_title), profile.name, "${profile.address}:${profile.port}" + (addedLatency?.let { " · " + ltr("$it ms") } ?: ""), onDone)
                     Column(Modifier.padding(24.dp)) {
                         Text(stringResource(R.string.add_added_body), style = skyBody(15), color = Sky.muted(0.75f))
+                        Spacer(Modifier.height(22.dp))
+                        PrimaryButton(stringResource(R.string.add_connect_now)) { connect(profile) }
+                    }
+                }
+            }
+
+            AddStage.WARP -> added?.let { profile ->
+                Column(Modifier.fillMaxSize()) {
+                    ResultHeader(stringResource(R.string.warp_added_kicker), warpName, null, onDone)
+                    Column(Modifier.padding(24.dp)) {
+                        Text(stringResource(R.string.warp_added_body), style = skyBody(15), color = Sky.muted(0.75f))
+                        Spacer(Modifier.height(16.dp))
+                        Text(stringResource(R.string.warp_added_note), style = skyBody(13), color = Sky.muted(0.6f))
                         Spacer(Modifier.height(22.dp))
                         PrimaryButton(stringResource(R.string.add_connect_now)) { connect(profile) }
                     }

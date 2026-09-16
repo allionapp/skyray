@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import com.allion.skyray.MainActivity
 import com.allion.skyray.R
 import com.allion.skyray.core.RaycoreBridge
+import com.allion.skyray.core.WarpCore
 import com.allion.skyray.core.SingboxConfigBuilder
 import com.allion.skyray.core.XrayConfigBuilder
 import com.allion.skyray.data.AppConstants
@@ -101,7 +102,13 @@ class SkyRayVpnService : VpnService() {
             val geoDir = File(filesDir, "geo")
             RaycoreBridge.setEnv("XRAY_LOCATION_ASSET", geoDir.absolutePath)
             val hasGeoData = File(geoDir, "geoip.dat").exists()
+            // WARP runs its own core and proxy; the others are built here.
+            val socksPort = if (core == CoreKind.warp) AppConstants.WARP_SOCKS_PORT else AppConstants.SOCKS_PORT
             when (core) {
+                CoreKind.warp -> {
+                    val transport = WarpCore.start(this) { line -> store.appendTunnelLog(line) }
+                    store.appendTunnelLog("WARP ready over $transport")
+                }
                 CoreKind.xray -> {
                     val config = XrayConfigBuilder.runtimeConfig(outboundJson, settings, AppConstants.SOCKS_PORT, hasGeoData)
                     RaycoreBridge.testXrayConfig(config)
@@ -135,7 +142,7 @@ class SkyRayVpnService : VpnService() {
             val pfd = builder.establish() ?: throw IllegalStateException("VpnService.Builder.establish() returned null")
             tunFd = pfd
 
-            val yaml = buildHevYaml()
+            val yaml = buildHevYaml(socksPort)
             val configFile = File(cacheDir, "hev-tunnel.yml").apply { writeText(yaml) }
             val started = TProxyService.TProxyStartService(configFile.absolutePath, pfd.fd)
             if (!started) throw IllegalStateException("hev-socks5-tunnel failed to start")
@@ -151,13 +158,13 @@ class SkyRayVpnService : VpnService() {
         }
     }
 
-    private fun buildHevYaml(): String = """
+    private fun buildHevYaml(socksPort: Int): String = """
         tunnel:
           mtu: $MTU
           ipv4: $TUNNEL_IPV4
           ipv6: '$TUNNEL_IPV6'
         socks5:
-          port: ${AppConstants.SOCKS_PORT}
+          port: $socksPort
           address: 127.0.0.1
           udp: 'udp'
         misc:
@@ -188,6 +195,7 @@ class SkyRayVpnService : VpnService() {
     fun currentStats(): LongArray = runCatching { TProxyService.TProxyGetStats() }.getOrDefault(LongArray(4))
 
     private fun stopTunnel() {
+        WarpCore.stop()
         statsJob?.cancel()
         runCatching { TProxyService.TProxyStopService() }
         runCatching { RaycoreBridge.stopXray() }

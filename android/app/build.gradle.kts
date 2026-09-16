@@ -64,6 +64,9 @@ android {
     buildFeatures { compose = true }
 
     packaging {
+        // The WARP core is an executable, not a library: it has to be unpacked
+        // onto disk before it can be run.
+        jniLibs.useLegacyPackaging = true
         resources.excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*")
     }
 }

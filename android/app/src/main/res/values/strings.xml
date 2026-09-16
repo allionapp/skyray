@@ -156,4 +156,13 @@
     <string name="settings_advanced">Advanced</string>
     <string name="settings_advanced_body">Leave these as they are unless your provider asks you to change them.</string>
     <string name="settings_lan">Share proxy on LAN</string>
+    <string name="warp_name">Free WARP</string>
+    <string name="warp_option_title">Free WARP</string>
+    <string name="warp_option_body">No link needed — Cloudflare\'s free servers</string>
+    <string name="warp_unavailable">Not available on this device</string>
+    <string name="warp_added_kicker">Ready to use</string>
+    <string name="warp_added_body">WARP sends your traffic through Cloudflare. It needs no subscription and no link, and it is free.</string>
+    <string name="warp_added_note">Speed varies with your network, and some sites may still see you as being in your own country.</string>
+    <string name="servers_free_group">Free</string>
+    <string name="settings_credits">Built on Xray-core (MPL-2.0) via libXray, sing-box (GPL-3.0), hev-socks5-tunnel (MIT), and Aether (AGPL-3.0) for WARP. Geo data from Iran-v2ray-rules.</string>
 </resources>

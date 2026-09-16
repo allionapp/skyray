@@ -150,4 +150,13 @@
     <string name="settings_subscription_remove_title">«%1$s» حذف شود؟</string>
     <string name="settings_subscription_servers">%1$d سرور</string>
     <string name="settings_subscriptions_empty">هنوز اشتراکی ندارید. با دکمه‌ی + در صفحه‌ی اصلی اضافه کنید.</string>
+    <string name="warp_name">WARP رایگان</string>
+    <string name="warp_option_title">WARP رایگان</string>
+    <string name="warp_option_body">بدون نیاز به لینک — سرورهای رایگان Cloudflare</string>
+    <string name="warp_unavailable">روی این دستگاه در دسترس نیست</string>
+    <string name="warp_added_kicker">آماده‌ی استفاده</string>
+    <string name="warp_added_body">WARP ترافیک شما را از سرورهای Cloudflare عبور می‌دهد. نه اشتراک می‌خواهد، نه لینک، و رایگان است.</string>
+    <string name="warp_added_note">سرعتش به شبکه‌ی شما بستگی دارد و ممکن است بعضی سایت‌ها همچنان شما را در کشور خودتان ببینند.</string>
+    <string name="servers_free_group">رایگان</string>
+    <string name="settings_credits">ساخته‌شده بر پایه‌ی Xray-core (MPL-2.0) از طریق libXray، sing-box (GPL-3.0)، hev-socks5-tunnel (MIT) و Aether (AGPL-3.0) برای WARP. داده‌های جغرافیایی از Iran-v2ray-rules.</string>
 </resources>

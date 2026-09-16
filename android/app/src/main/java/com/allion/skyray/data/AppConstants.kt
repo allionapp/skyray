@@ -16,6 +16,9 @@ object AppConstants {
     const val SUPPORT_URL = "https://allionapp.github.io/skyray-site/support.html"
     const val TERMS_URL = "https://allionapp.github.io/skyray-site/terms.html"
 
+    /** Aether's own SOCKS5 port, kept apart from the Xray/sing-box one. */
+    const val WARP_SOCKS_PORT = 10819
+
     const val PING_URL = "https://www.google.com/generate_204"
     const val PING_URL_PLAIN = "http://cp.cloudflare.com/generate_204"
     const val PING_TIMEOUT_SECONDS = 8
