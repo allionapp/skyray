@@ -253,7 +253,9 @@ private fun ServerCard(profilesViewModel: ProfilesViewModel, onField: Boolean, o
             }
             Icon(Icons.Filled.UnfoldMore, null, tint = if (onField) Sky.onField.copy(alpha = 0.8f) else Sky.muted(0.5f))
         }
-        val subUrl = selected?.subscriptionUrl ?: profiles.firstOrNull()?.subscriptionUrl
+        // In automatic mode no server is chosen yet, so the first plan stands in;
+        // a hand-picked server (WARP included) shows only its own plan.
+        val subUrl = if (showAutomatic) profiles.firstOrNull { it.subscriptionUrl != null }?.subscriptionUrl else selected?.subscriptionUrl
         subscriptions.firstOrNull { it.url == subUrl }?.let { sub ->
             if (sub.hasQuota || sub.expireEpochSeconds != null) {
                 Spacer(Modifier.height(14.dp))
