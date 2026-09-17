@@ -46,8 +46,22 @@ object AdsManager {
     }
 
     private fun initializeAndLoad(context: Context) {
+        // Debug builds on the team's own phones get test ads, so development
+        // never produces impressions or clicks AdMob would count as invalid.
+        if (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            MobileAds.setRequestConfiguration(
+                com.google.android.gms.ads.RequestConfiguration.Builder()
+                    .setTestDeviceIds(TEST_DEVICE_IDS)
+                    .build(),
+            )
+        }
         MobileAds.initialize(context) { loadAd(context) }
     }
+
+    /** AdMob's hashed ids, as printed in logcat by the SDK on each device. */
+    private val TEST_DEVICE_IDS = listOf(
+        "07E1BE8FAC62500944093B6D767013B5", // Samsung Galaxy A17 (SM-A176U1)
+    )
 
     private fun loadAd(context: Context) {
         if (isLoadingAd || rewardedInterstitial != null) return
