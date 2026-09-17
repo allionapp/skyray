@@ -159,4 +159,6 @@
     <string name="warp_added_note">سرعتش به شبکه‌ی شما بستگی دارد و ممکن است بعضی سایت‌ها همچنان شما را در کشور خودتان ببینند.</string>
     <string name="servers_free_group">رایگان</string>
     <string name="settings_credits">ساخته‌شده بر پایه‌ی Xray-core (MPL-2.0) از طریق libXray، sing-box (GPL-3.0)، hev-socks5-tunnel (MIT) و Aether (AGPL-3.0) برای WARP. داده‌های جغرافیایی از Iran-v2ray-rules.</string>
+    <string name="ad_required_notice">برای اتصال باید تبلیغ کوتاه را تا پایان ببینید. دوباره وصل شوید و بگذارید تبلیغ تمام شود.</string>
+    <string name="home_ad_hint">استفاده رایگان است — بعد از اتصال یک تبلیغ کوتاه پخش می‌شود</string>
 </resources>

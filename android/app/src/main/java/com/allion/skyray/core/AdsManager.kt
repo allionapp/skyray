@@ -2,6 +2,7 @@ package com.allion.skyray.core
 
 import android.app.Activity
 import android.content.Context
+import com.allion.skyray.service.SkyRayVpnService
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.MobileAds
@@ -60,7 +61,11 @@ object AdsManager {
 
     /** AdMob's hashed ids, as printed in logcat by the SDK on each device. */
     private val TEST_DEVICE_IDS = listOf(
+        // AdMob rotates these per app install, so the phone keeps earning new
+        // ids; each debug install prints its own in logcat.
         "07E1BE8FAC62500944093B6D767013B5", // Samsung Galaxy A17 (SM-A176U1)
+        "185751BEA04B489B45EEFA10336D2AD3",
+        "A58AAF34EF557B4CD3BC536159FD50D3",
     )
 
     private fun loadAd(context: Context) {
@@ -92,9 +97,16 @@ object AdsManager {
         )
     }
 
-    /** Shows the ad if one is ready and the cooldown has elapsed; always safe
-     * to call right after a connection succeeds. */
-    fun showAfterConnect(activity: Activity) {
+    /**
+     * Shows the ad if one is ready and the cooldown has elapsed; always safe to
+     * call right after a connection succeeds.
+     *
+     * [onAdSkipped] runs when an ad was shown but closed before it finished.
+     * Nothing is reported when no ad could be shown at all: a user whose
+     * network cannot even reach Google's ad servers must not lose the tunnel
+     * because of it.
+     */
+    fun showAfterConnect(activity: Activity, onAdSkipped: () -> Unit) {
         if (!didStart) return
         val now = System.currentTimeMillis()
         if (now - lastShownAtMillis < MIN_INTERVAL_MILLIS) return
@@ -103,7 +115,26 @@ object AdsManager {
             return
         }
         lastShownAtMillis = now
-        // No in-app currency to grant; the reward just gates the ad's own close button.
-        ad.show(activity) {}
+        val context = activity.applicationContext
+        var earned = false
+        // Watching it through is what keeps the connection, so the outcome of
+        // this one showing has to be tracked, not just the fact that it opened.
+        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+            override fun onAdShowedFullScreenContent() {
+                SkyRayVpnService.awaitingAdReward = true
+            }
+            override fun onAdDismissedFullScreenContent() {
+                SkyRayVpnService.awaitingAdReward = false
+                rewardedInterstitial = null
+                loadAd(context)
+                if (!earned) onAdSkipped()
+            }
+            override fun onAdFailedToShowFullScreenContent(error: com.google.android.gms.ads.AdError) {
+                SkyRayVpnService.awaitingAdReward = false
+                rewardedInterstitial = null
+                loadAd(context)
+            }
+        }
+        ad.show(activity) { earned = true }
     }
 }

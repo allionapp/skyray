@@ -165,4 +165,6 @@
     <string name="warp_added_note">Speed varies with your network, and some sites may still see you as being in your own country.</string>
     <string name="servers_free_group">Free</string>
     <string name="settings_credits">Built on Xray-core (MPL-2.0) via libXray, sing-box (GPL-3.0), hev-socks5-tunnel (MIT), and Aether (AGPL-3.0) for WARP. Geo data from Iran-v2ray-rules.</string>
+    <string name="ad_required_notice">The connection needs the short ad watched through to the end. Tap connect and let it finish.</string>
+    <string name="home_ad_hint">Free to use — a short ad plays once you connect</string>
 </resources>

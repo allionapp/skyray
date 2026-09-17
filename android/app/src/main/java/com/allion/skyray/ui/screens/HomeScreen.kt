@@ -79,6 +79,7 @@ fun HomeScreen(
 ) {
     val isConnected by vpnManager.isConnected.collectAsState()
     val lastError by vpnManager.lastError.collectAsState()
+    val notice by vpnManager.notice.collectAsState()
     val profiles by profilesViewModel.profiles.collectAsState()
     val scope = rememberCoroutineScope()
     // The service reports only running or not, so the wait in between is tracked here.
@@ -143,9 +144,13 @@ fun HomeScreen(
             } else if (profiles.isEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 Text(stringResource(R.string.home_provider_hint), style = skyBody(14), color = Sky.muted(0.6f), textAlign = TextAlign.Center)
+            } else if (!connecting && !findingFastest) {
+                // Play requires the ad to be announced before it interrupts anything.
+                Spacer(Modifier.height(8.dp))
+                Text(stringResource(R.string.home_ad_hint), style = skyBody(13), color = Sky.muted(0.55f), textAlign = TextAlign.Center)
             }
             if (!isConnected && !connecting) {
-                lastError?.let {
+                (notice ?: lastError)?.let {
                     Spacer(Modifier.height(14.dp))
                     Text(it, style = skyBody(13), color = Sky.accentDeep, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 32.dp))
                 }

@@ -38,6 +38,9 @@ import java.io.File
  */
 class SkyRayVpnService : VpnService() {
     companion object {
+        /** True while the post-connect ad is on screen and unfinished. */
+        @Volatile var awaitingAdReward = false
+
         const val CHANNEL_ID = "skyray_vpn"
         const val NOTIF_ID = 1
         const val TUNNEL_IPV4 = "198.18.0.1"
@@ -193,6 +196,16 @@ class SkyRayVpnService : VpnService() {
     }
 
     fun currentStats(): LongArray = runCatching { TProxyService.TProxyGetStats() }.getOrDefault(LongArray(4))
+
+    /** Swiping the app away counts as walking out on the ad. */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        if (awaitingAdReward && isRunning) {
+            awaitingAdReward = false
+            lastError = getString(R.string.ad_required_notice)
+            stopTunnel()
+        }
+    }
 
     private fun stopTunnel() {
         WarpCore.stop()

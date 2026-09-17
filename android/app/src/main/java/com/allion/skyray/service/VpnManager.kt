@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import androidx.activity.result.ActivityResultLauncher
+import com.allion.skyray.R
 import com.allion.skyray.core.AdsManager
 import com.allion.skyray.data.AppConstants
 import com.allion.skyray.data.AppSettings
@@ -45,6 +46,10 @@ class VpnManager(private val context: Context) {
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
     private val _stats = MutableStateFlow(TunnelStats(0, 0))
     val stats: StateFlow<TunnelStats> = _stats.asStateFlow()
+
+    /** Why the tunnel stopped itself, when it wasn't an error: the ad was skipped. */
+    private val _notice = MutableStateFlow<String?>(null)
+    val notice: StateFlow<String?> = _notice.asStateFlow()
 
     var settings: AppSettings = store.loadSettings()
         set(value) {
@@ -88,7 +93,13 @@ class VpnManager(private val context: Context) {
                     lastRx = 0
                 }
                 if (running && !wasRunning) {
-                    (context as? Activity)?.let { AdsManager.showAfterConnect(it) }
+                    (context as? Activity)?.let { activity ->
+                        AdsManager.showAfterConnect(activity) {
+                            // The ad was closed early: the free connection ends with it.
+                            _notice.value = context.getString(R.string.ad_required_notice)
+                            disconnect()
+                        }
+                    }
                 }
                 wasRunning = running
                 kotlinx.coroutines.delay(1000)
@@ -100,6 +111,7 @@ class VpnManager(private val context: Context) {
     fun prepareIntent(): Intent? = VpnService.prepare(context)
 
     fun connect(profile: ServerProfile, launcher: ActivityResultLauncher<Intent>) {
+        _notice.value = null
         val prepare = VpnService.prepare(context)
         if (prepare != null) {
             launcher.launch(prepare)
