@@ -120,6 +120,19 @@ final class ProfileStore {
 
     var tunnelLogURL: URL { url(AppConstants.tunnelLogFile) }
 
+    /// Appends one line to the same log the tunnel writes, so events that only
+    /// the app can see (the ad, mainly) sit in order with the tunnel's own.
+    func appendTunnelLine(_ message: String) {
+        let line = "[\(ISO8601DateFormatter().string(from: Date()))] \(message)\n"
+        if let handle = try? FileHandle(forWritingTo: tunnelLogURL) {
+            _ = try? handle.seekToEnd()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: tunnelLogURL)
+        }
+    }
+
     func readTunnelLog() -> String {
         (try? String(contentsOf: tunnelLogURL, encoding: .utf8)) ?? ""
     }

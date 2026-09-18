@@ -73,6 +73,7 @@ final class AdsManager: NSObject, ObservableObject {
     private var earnedReward = false
     private var skipHandler: (() -> Void)?
     private var isAdOnScreen = false
+    private var backgroundObserver: NSObjectProtocol?
     /// A tap on the ad sends the user to the App Store, which also backgrounds
     /// the app; that is the advertiser's own call to action, not a walk-out.
     private var didClickAd = false
@@ -88,23 +89,35 @@ final class AdsManager: NSObject, ObservableObject {
         earnedReward = false
         didClickAd = false
         isAdOnScreen = true
+        // SwiftUI's scenePhase does not reach a view the ad has covered, so the
+        // notification is what tells us the user walked out on it.
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main,
+        ) { [weak self] _ in self?.appMovedToBackground() }
         skipHandler = onAdSkipped
         // Watching it through is what keeps the connection, so the outcome of
         // this one showing has to be tracked, not just that it opened.
+        ProfileStore.shared.appendTunnelLine("[ads] showing")
         ad.present(fromRootViewController: root) { [weak self] in
             self?.earnedReward = true
-            NSLog("[ads] reward earned")
+            ProfileStore.shared.appendTunnelLine("[ads] reward earned")
         }
     }
 }
 
 extension AdsManager {
+    private func stopWatchingBackground() {
+        if let observer = backgroundObserver { NotificationCenter.default.removeObserver(observer) }
+        backgroundObserver = nil
+    }
+
     /// Leaving the app with the ad still up is how the free connection was had
     /// for nothing on iOS: nothing else notices, since the ad never dismisses.
     func appMovedToBackground() {
         guard isAdOnScreen, !earnedReward, !didClickAd, let handler = skipHandler else { return }
         skipHandler = nil
-        NSLog("[ads] app left with the ad unfinished; the tunnel goes down")
+        stopWatchingBackground()
+        ProfileStore.shared.appendTunnelLine("[ads] app left with the ad unfinished; the tunnel goes down")
         handler()
     }
 }
@@ -116,6 +129,7 @@ extension AdsManager: GADFullScreenContentDelegate {
 
     func adDidDismissFullScreenContent(_ ad: GADFullScreenPresentingAd) {
         isAdOnScreen = false
+        stopWatchingBackground()
         rewardedInterstitial = nil
         loadAd()
         // The reward can arrive just after the dismissal rather than before it,
@@ -123,15 +137,16 @@ extension AdsManager: GADFullScreenContentDelegate {
         // had in fact paid for with their attention.
         let handler = skipHandler
         skipHandler = nil
-        NSLog("[ads] ad dismissed, reward=\(earnedReward)")
+        ProfileStore.shared.appendTunnelLine("[ads] dismissed, reward=\(earnedReward)")
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             guard let self, !self.earnedReward else { return }
-            NSLog("[ads] no reward after the grace period; the tunnel goes down")
+            ProfileStore.shared.appendTunnelLine("[ads] no reward after the grace period; the tunnel goes down")
             handler?()
         }
     }
     func ad(_ ad: GADFullScreenPresentingAd, didFailToPresentFullScreenContentWithError error: Error) {
         isAdOnScreen = false
+        stopWatchingBackground()
         rewardedInterstitial = nil
         skipHandler = nil
         loadAd()

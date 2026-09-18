@@ -15,6 +15,7 @@ struct SkyRayApp: App {
                 .task { await onLaunch() }
                 .onChange(of: scenePhase) { phase in
                     vpn.setActive(phase == .active)
+                    ProfileStore.shared.appendTunnelLine("[app] scene \(phase)")
                     if phase == .background { AdsManager.shared.appMovedToBackground() }
                     if phase == .active { Task { await profiles.updateStaleSubscriptions(defaultHours: vpn.settings.subscriptionAutoUpdateHours) } }
                 }
@@ -125,6 +126,11 @@ struct SkyRayApp: App {
                 if let merged = try? JSONSerialization.data(withJSONObject: current),
                    let s = try? decoder.decode(AppSettings.self, from: merged) { vpn.settings = s }
             }
+        }
+        // -AdWarmup <seconds> waits for the ads SDK to have one ready, so a
+        // device run can exercise what happens around the ad.
+        if let warmup = defaults.string(forKey: "AdWarmup"), let seconds = Double(warmup) {
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         }
         if defaults.bool(forKey: "AutoConnect"), let profile = profiles.selectedProfile {
             await vpn.reconnect(profile: profile, force: true)
