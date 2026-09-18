@@ -96,6 +96,11 @@ struct SkyRayApp: App {
             let added = await profiles.importText(link)
             if added > 0, let last = profiles.profiles.last { profiles.select(last) }
         }
+        // -AddWarp YES adds and selects the free WARP entry, so a device test
+        // needs no link at all.
+        if defaults.bool(forKey: "AddWarp") {
+            profiles.choose(profiles.addWarp(name: String(localized: "Free WARP")))
+        }
         if let sub = defaults.string(forKey: "ImportSubscription"), !sub.isEmpty {
             await profiles.importSubscription(sub)
         }

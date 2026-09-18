@@ -27,9 +27,9 @@ enum WarpCore {
     }
 
     static var version: String {
-        guard let raw = aether_version() else { return "unknown" }
-        defer { aether_string_free(raw) }
-        return String(cString: raw)
+        guard let response = call({ _ in aether_version() }, nil),
+              let version = response["version"] as? String else { return "unknown" }
+        return version
     }
 
     /// Brings WARP up and returns the transport that worked, or throws.
@@ -50,8 +50,12 @@ enum WarpCore {
                 lastReason = "the WARP core would not start"
                 continue
             }
-            guard let id = (started["data"] as? [String: Any])?["job"] as? UInt64
-                ?? ((started["data"] as? [String: Any])?["job"] as? NSNumber)?.uint64Value else {
+            if let error = started["error"] as? String {
+                lastReason = error
+                continue
+            }
+            // The core answers flat: {"ok":true,"job":<id>}.
+            guard let id = (started["job"] as? NSNumber)?.uint64Value else {
                 lastReason = "the WARP core did not report a job"
                 continue
             }
@@ -94,7 +98,7 @@ enum WarpCore {
             TunnelLog.write("[warp] \(error)")
             return "failed"
         }
-        return (response["data"] as? [String: Any])?["state"] as? String
+        return response["state"] as? String
     }
 
     private static func canConnect(port: Int) -> Bool {
