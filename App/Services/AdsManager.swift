@@ -87,6 +87,7 @@ final class AdsManager: NSObject, ObservableObject {
         // this one showing has to be tracked, not just that it opened.
         ad.present(fromRootViewController: root) { [weak self] in
             self?.earnedReward = true
+            NSLog("[ads] reward earned")
         }
     }
 }
@@ -95,10 +96,17 @@ extension AdsManager: GADFullScreenContentDelegate {
     func adDidDismissFullScreenContent(_ ad: GADFullScreenPresentingAd) {
         rewardedInterstitial = nil
         loadAd()
-        let skipped = !earnedReward
+        // The reward can arrive just after the dismissal rather than before it,
+        // and judging an ad skipped in that gap would drop a tunnel the user
+        // had in fact paid for with their attention.
         let handler = skipHandler
         skipHandler = nil
-        if skipped { handler?() }
+        NSLog("[ads] ad dismissed, reward=\(earnedReward)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self, !self.earnedReward else { return }
+            NSLog("[ads] no reward after the grace period; the tunnel goes down")
+            handler?()
+        }
     }
     func ad(_ ad: GADFullScreenPresentingAd, didFailToPresentFullScreenContentWithError error: Error) {
         rewardedInterstitial = nil

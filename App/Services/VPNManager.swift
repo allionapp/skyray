@@ -161,6 +161,7 @@ final class VPNManager: ObservableObject {
             if isFreshConnect {
                 AdsManager.shared.showAfterConnect { [weak self] in
                     // The ad was closed early: the free connection ends with it.
+                    self?.debugNote = "ad closed before the reward; disconnecting"
                     self?.notice = String(localized: "The connection needs the short ad watched through to the end. Tap connect and let it finish.")
                     self?.disconnect()
                 }

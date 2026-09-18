@@ -96,6 +96,7 @@ class VpnManager(private val context: Context) {
                     (context as? Activity)?.let { activity ->
                         AdsManager.showAfterConnect(activity) {
                             // The ad was closed early: the free connection ends with it.
+                            store.appendTunnelLog("[ad] closed before the reward; disconnecting")
                             _notice.value = context.getString(R.string.ad_required_notice)
                             disconnect()
                         }

@@ -127,7 +127,12 @@ object AdsManager {
                 SkyRayVpnService.awaitingAdReward = false
                 rewardedInterstitial = null
                 loadAd(context)
-                if (!earned) onAdSkipped()
+                // The reward can arrive just after the dismissal rather than
+                // before it, and judging an ad skipped in that gap would drop a
+                // tunnel the user had in fact paid for with their attention.
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    if (!earned) onAdSkipped()
+                }, 2000)
             }
             override fun onAdFailedToShowFullScreenContent(error: com.google.android.gms.ads.AdError) {
                 SkyRayVpnService.awaitingAdReward = false
