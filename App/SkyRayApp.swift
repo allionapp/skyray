@@ -15,6 +15,7 @@ struct SkyRayApp: App {
                 .task { await onLaunch() }
                 .onChange(of: scenePhase) { phase in
                     vpn.setActive(phase == .active)
+                    if phase == .background { AdsManager.shared.appMovedToBackground() }
                     if phase == .active { Task { await profiles.updateStaleSubscriptions(defaultHours: vpn.settings.subscriptionAutoUpdateHours) } }
                 }
                 .onOpenURL { url in

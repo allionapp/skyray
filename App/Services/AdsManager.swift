@@ -72,6 +72,10 @@ final class AdsManager: NSObject, ObservableObject {
     /// Set while an ad is on screen: whether it ran to the end, and who to tell if it didn't.
     private var earnedReward = false
     private var skipHandler: (() -> Void)?
+    private var isAdOnScreen = false
+    /// A tap on the ad sends the user to the App Store, which also backgrounds
+    /// the app; that is the advertiser's own call to action, not a walk-out.
+    private var didClickAd = false
 
     func showAfterConnect(onAdSkipped: @escaping () -> Void) {
         guard didStart else { return }
@@ -82,6 +86,8 @@ final class AdsManager: NSObject, ObservableObject {
         }
         lastShown = Date()
         earnedReward = false
+        didClickAd = false
+        isAdOnScreen = true
         skipHandler = onAdSkipped
         // Watching it through is what keeps the connection, so the outcome of
         // this one showing has to be tracked, not just that it opened.
@@ -92,8 +98,24 @@ final class AdsManager: NSObject, ObservableObject {
     }
 }
 
+extension AdsManager {
+    /// Leaving the app with the ad still up is how the free connection was had
+    /// for nothing on iOS: nothing else notices, since the ad never dismisses.
+    func appMovedToBackground() {
+        guard isAdOnScreen, !earnedReward, !didClickAd, let handler = skipHandler else { return }
+        skipHandler = nil
+        NSLog("[ads] app left with the ad unfinished; the tunnel goes down")
+        handler()
+    }
+}
+
 extension AdsManager: GADFullScreenContentDelegate {
+    func adDidRecordClick(_ ad: GADFullScreenPresentingAd) {
+        didClickAd = true
+    }
+
     func adDidDismissFullScreenContent(_ ad: GADFullScreenPresentingAd) {
+        isAdOnScreen = false
         rewardedInterstitial = nil
         loadAd()
         // The reward can arrive just after the dismissal rather than before it,
@@ -109,6 +131,7 @@ extension AdsManager: GADFullScreenContentDelegate {
         }
     }
     func ad(_ ad: GADFullScreenPresentingAd, didFailToPresentFullScreenContentWithError error: Error) {
+        isAdOnScreen = false
         rewardedInterstitial = nil
         skipHandler = nil
         loadAd()
