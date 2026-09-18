@@ -21,6 +21,7 @@ struct ChooserView: View {
     let onDone: () -> Void
     @State private var clipboardHasText = false
     @State private var goPaste = false
+    @State private var goWarp = false
     @State private var goScan = false
     @State private var goCheck = false
     @State private var goDemoAdded = false
@@ -50,6 +51,12 @@ struct ChooserView: View {
                         .padding(.horizontal, 24).padding(.bottom, 16).leading()
                 }
                 Rule(strong: false)
+                option(icon: "bolt.fill", tint: Sky.primary, title: "Free WARP",
+                       body: "No link needed — Cloudflare's free servers") {
+                    profiles.choose(profiles.addWarp(name: String(localized: "Free WARP")))
+                    goWarp = true
+                }
+                Rule(strong: false)
                 option(icon: "qrcode.viewfinder", tint: Sky.ink, title: "Scan a QR code",
                        body: "Point the camera at the square code on your provider's page") { goScan = true }
                 Rule(strong: false)
@@ -66,6 +73,7 @@ struct ChooserView: View {
                 .overlay(Rule().padding(.horizontal, 24), alignment: .top)
 
                 NavigationLink(destination: PasteLinkView(onDone: onDone), isActive: $goPaste) { EmptyView() }.hidden()
+                NavigationLink(destination: WarpAddedView(onDone: onDone).navigationBarHidden(true), isActive: $goWarp) { EmptyView() }.hidden()
                 NavigationLink(destination: QRScanView(onDone: onDone), isActive: $goScan) { EmptyView() }.hidden()
                 NavigationLink(destination: CheckingView(input: clipboardLink, customName: nil, onDone: onDone), isActive: $goCheck) { EmptyView() }.hidden()
                 if let demo = profiles.profiles.first {
@@ -609,6 +617,46 @@ private struct CloseOnField: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("Close"))
+    }
+}
+
+/// What the free WARP entry says for itself before the first connect.
+struct WarpAddedView: View {
+    let onDone: () -> Void
+    @EnvironmentObject private var vpn: VPNManager
+    @EnvironmentObject private var profiles: ProfilesViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top) {
+                    Kicker(text: "Ready to use", color: Sky.onField)
+                    Spacer()
+                    CloseOnField(action: onDone)
+                }
+                Text("Free WARP").font(Sky.heading(42)).foregroundColor(Sky.onField).padding(.top, 6)
+            }
+            .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 22).leading().background(Sky.accent)
+            VStack(alignment: .leading, spacing: 16) {
+                Text("WARP sends your traffic through Cloudflare. It needs no subscription and no link, and it is free.")
+                    .font(Sky.body(15)).foregroundColor(Sky.muted(0.75))
+                Text("Speed varies with your network, and some sites may still see you as being in your own country.")
+                    .font(Sky.body(13)).foregroundColor(Sky.muted(0.6))
+                Button {
+                    Task {
+                        if let warp = profiles.profiles.first(where: { $0.core == .warp }) {
+                            await vpn.reconnect(profile: warp)
+                        }
+                        onDone()
+                    }
+                } label: { HStack { Text("Connect now"); Spacer(); Image(systemName: "power").font(.system(size: 16, weight: .bold)) } }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .padding(.top, 6)
+            }
+            .padding(24)
+            Spacer()
+        }
+        .frame(maxWidth: 640).frame(maxWidth: .infinity)
     }
 }
 

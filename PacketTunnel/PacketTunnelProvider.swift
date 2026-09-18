@@ -45,8 +45,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             setenv("XRAY_LOCATION_ASSET", Bundle.main.bundlePath, 1)
         }
         activeCore = profile.core
+        // WARP runs its own core and proxy; the others are built here.
+        let socksPort = profile.core == .warp ? AppConstants.warpSocksPort : AppConstants.socksPort
         do {
             switch profile.core {
+            case .warp:
+                let directory = ProfileStore.shared.containerURL.appendingPathComponent("warp", isDirectory: true)
+                let transport = try WarpCore.start(port: socksPort, configDirectory: directory)
+                TunnelLog.write("WARP \(WarpCore.version) ready over \(transport) on 127.0.0.1:\(socksPort)")
             case .xray:
                 let config = try XrayConfigBuilder.runtimeConfig(outboundJSON: profile.outboundJSON, settings: settings, hasGeoData: hasGeoData)
                 try XrayCore.run(config)
@@ -57,7 +63,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 TunnelLog.write("sing-box \(SingboxCore.version()) started on \(settings.allowLAN ? "0.0.0.0" : "127.0.0.1"):\(AppConstants.socksPort) ads=\(settings.blockAds) rules=\(settings.customRules.count)")
             }
         } catch {
-            TunnelLog.write("\(profile.core == .xray ? "Xray" : "sing-box") failed to start: \(error.localizedDescription)")
+            TunnelLog.write("\(profile.core.rawValue) failed to start: \(error.localizedDescription)")
             completionHandler(error)
             return
         }
@@ -77,7 +83,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 return
             }
             TunnelLog.write("utun fd = \(fd), starting hev-socks5-tunnel")
-            self.hev.start(tunFD: fd, socksPort: AppConstants.socksPort) { [weak self] code in
+            self.hev.start(tunFD: fd, socksPort: socksPort) { [weak self] code in
                 guard let self, !self.stopping else { return }
                 TunnelLog.write("hev-socks5-tunnel exited unexpectedly (\(code))")
                 self.cancelTunnelWithError(TunnelError.hevExited(code))
@@ -99,12 +105,22 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     private func coreRunning() -> Bool {
-        activeCore == .xray ? XrayCore.isRunning() : SingboxCore.isRunning()
+        switch activeCore {
+        // WARP reports through its own job; the proxy port answering is the
+        // signal the watchdog needs, and hev already fails loudly without it.
+        case .warp: return true
+        case .xray: return XrayCore.isRunning()
+        case .singbox: return SingboxCore.isRunning()
+        }
     }
 
     private func stopCore() {
         do {
-            if activeCore == .xray { try XrayCore.stop() } else { try SingboxCore.stop() }
+            switch activeCore {
+            case .warp: WarpCore.stop()
+            case .xray: try XrayCore.stop()
+            case .singbox: try SingboxCore.stop()
+            }
         } catch {
             TunnelLog.write("Core stop error: \(error.localizedDescription)")
         }

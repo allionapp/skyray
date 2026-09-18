@@ -65,7 +65,15 @@ final class AdsManager: NSObject, ObservableObject {
 
     /// Shows the ad if one is ready and the cooldown has elapsed; always safe
     /// to call right after a connection succeeds.
-    func showAfterConnect() {
+    ///
+    /// [onAdSkipped] runs when an ad was shown but closed before it finished.
+    /// Nothing is reported when no ad could be shown at all: a user whose
+    /// network cannot even reach Google's ad servers must not lose the tunnel.
+    /// Set while an ad is on screen: whether it ran to the end, and who to tell if it didn't.
+    private var earnedReward = false
+    private var skipHandler: (() -> Void)?
+
+    func showAfterConnect(onAdSkipped: @escaping () -> Void) {
         guard didStart else { return }
         if let last = lastShown, Date().timeIntervalSince(last) < minInterval { return }
         guard let ad = rewardedInterstitial, let root = UIApplication.topMostViewController() else {
@@ -73,8 +81,12 @@ final class AdsManager: NSObject, ObservableObject {
             return
         }
         lastShown = Date()
-        ad.present(fromRootViewController: root) {
-            // No in-app currency to grant; the reward just gates the ad's own close button.
+        earnedReward = false
+        skipHandler = onAdSkipped
+        // Watching it through is what keeps the connection, so the outcome of
+        // this one showing has to be tracked, not just that it opened.
+        ad.present(fromRootViewController: root) { [weak self] in
+            self?.earnedReward = true
         }
     }
 }
@@ -83,9 +95,14 @@ extension AdsManager: GADFullScreenContentDelegate {
     func adDidDismissFullScreenContent(_ ad: GADFullScreenPresentingAd) {
         rewardedInterstitial = nil
         loadAd()
+        let skipped = !earnedReward
+        let handler = skipHandler
+        skipHandler = nil
+        if skipped { handler?() }
     }
     func ad(_ ad: GADFullScreenPresentingAd, didFailToPresentFullScreenContentWithError error: Error) {
         rewardedInterstitial = nil
+        skipHandler = nil
         loadAd()
     }
 }

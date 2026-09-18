@@ -40,6 +40,22 @@ final class ProfilesViewModel: ObservableObject {
 
     func select(_ profile: ServerProfile) { selectedId = profile.id }
 
+    /// The free Cloudflare WARP entry, added once and kept like any other server.
+    @discardableResult
+    func addWarp(name: String) -> ServerProfile {
+        if let existing = profiles.first(where: { $0.core == .warp }) { return existing }
+        let profile = ServerProfile(name: name, protocolName: "warp", address: "cloudflare",
+                                    port: 443, outboundJSON: "{}", core: .warp)
+        profiles.append(profile)
+        persist()
+        return profile
+    }
+
+    var hasWarp: Bool { profiles.contains { $0.core == .warp } }
+
+    /// Stands in for a subscription URL so WARP gets its own group.
+    static let warpGroup = "warp://free"
+
     /// A server the user picked by hand, which ends automatic selection.
     func choose(_ profile: ServerProfile) {
         isAutomatic = false
@@ -54,7 +70,9 @@ final class ProfilesViewModel: ObservableObject {
     /// The server to connect to. In automatic mode that is the fastest one,
     /// retesting first unless a test ran in the last few minutes.
     func connectionTarget() async -> ServerProfile? {
-        guard isAutomatic, profiles.count > 1 else { return selectedProfile }
+        // WARP is a deliberate choice, not something automatic mode overrides.
+        if selectedProfile?.core == .warp { return selectedProfile }
+        guard isAutomatic, profiles.filter({ $0.core != .warp }).count > 1 else { return selectedProfile }
         if !latenciesAreFresh { await pingAll() }
         return selectFastest() ?? selectedProfile
     }
@@ -64,13 +82,17 @@ final class ProfilesViewModel: ObservableObject {
         var order: [String?] = []
         var buckets: [String?: [ServerProfile]] = [:]
         for p in profiles {
-            if buckets[p.subscriptionURL] == nil { order.append(p.subscriptionURL) }
-            buckets[p.subscriptionURL, default: []].append(p)
+            let key = p.core == .warp ? Self.warpGroup : p.subscriptionURL
+            if buckets[key] == nil { order.append(key) }
+            buckets[key, default: []].append(p)
         }
-        let sorted = order.filter { $0 != nil } + order.filter { $0 == nil }
+        // WARP first, then the subscriptions, then whatever was added by hand.
+        let sorted = order.filter { $0 == Self.warpGroup } + order.filter { $0 != nil && $0 != Self.warpGroup } + order.filter { $0 == nil }
         return sorted.map { url in
             let title: String
-            if let url {
+            if url == Self.warpGroup {
+                title = String(localized: "Free")
+            } else if let url {
                 title = subscriptions.first { $0.url == url }?.title ?? URL(string: url)?.host ?? url
             } else {
                 title = String(localized: "Added by hand")
@@ -306,7 +328,8 @@ final class ProfilesViewModel: ObservableObject {
     /// finish in reasonable time without spawning hundreds of Xray instances.
     /// `subset` limits the test to those servers, e.g. the ones a subscription just brought in.
     func pingAll(only subset: [ServerProfile]? = nil) async {
-        let snapshot = subset ?? profiles
+        // WARP has no outbound of its own, so neither core can test it.
+        let snapshot = (subset ?? profiles).filter { $0.core != .warp }
         guard !isPinging, !snapshot.isEmpty else { return }
         isPinging = true
         pingProgress = (0, snapshot.count)

@@ -85,6 +85,8 @@ targets:
     dependencies:
       - framework: Frameworks/LibXray.xcframework
         embed: false
+      - framework: Frameworks/Aether.xcframework
+        embed: false
       - framework: Frameworks/HevSocks5Tunnel.xcframework
         embed: false
       - sdk: NetworkExtension.framework

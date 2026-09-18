@@ -5,6 +5,9 @@ enum CoreKind: String, Codable {
     case xray
     /// sing-box: SSH, TUIC.
     case singbox
+
+    /// Cloudflare WARP through the Aether core; carries no outbound of its own.
+    case warp
 }
 
 /// One proxy server. `outboundJSON` is a single outbound object for the core

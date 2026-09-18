@@ -22,8 +22,8 @@ struct HomeView: View {
                 powerButton
                 statusText.padding(.top, 26)
                 if vpn.isConnected { liveStats.padding(.top, 18) }
-                if let error = vpn.lastError, !vpn.isConnected {
-                    Text(error).font(Sky.body(13)).foregroundColor(Sky.accentDeep)
+                if let message = vpn.notice ?? vpn.lastError, !vpn.isConnected {
+                    Text(message).font(Sky.body(13)).foregroundColor(Sky.accentDeep)
                         .multilineTextAlignment(.center).padding(.horizontal, 32).padding(.top, 14)
                 }
                 Spacer(minLength: 20)
@@ -122,6 +122,10 @@ struct HomeView: View {
             } else if profiles.profiles.isEmpty {
                 Text("Your provider gives you a link or a QR code.")
                     .font(Sky.body(14)).foregroundColor(Sky.muted(0.6))
+            } else if !findingFastest, !vpn.isBusy {
+                // Both stores want the ad announced before it interrupts anything.
+                Text("Free to use — a short ad plays once you connect")
+                    .font(Sky.body(13)).foregroundColor(Sky.muted(0.55))
             }
         }
         .multilineTextAlignment(.center)

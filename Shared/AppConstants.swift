@@ -9,6 +9,9 @@ enum AppConstants {
     /// Local SOCKS5 inbound that Xray opens inside the tunnel extension.
     static let socksPort = 10808
 
+    /// Aether's own SOCKS5 port, kept apart from the Xray/sing-box one.
+    static let warpSocksPort = 10819
+
     static let profilesFile = "profiles.json"
     static let profilesBackupFile = "profiles.backup.json"
     /// Only the selected profile, written by the app for the extension so the

@@ -317,3 +317,13 @@
 "Speed tests" = "تست سرعت";
 "Delay" = "تأخیر";
 "Or pick a server yourself. Fastest first." = "یا خودتان یک سرور انتخاب کنید. سریع‌ترین‌ها اول هستند.";
+
+/* Free WARP and the ad that pays for it */
+"Free WARP" = "WARP رایگان";
+"No link needed — Cloudflare's free servers" = "بدون نیاز به لینک — سرورهای رایگان Cloudflare";
+"Ready to use" = "آماده‌ی استفاده";
+"WARP sends your traffic through Cloudflare. It needs no subscription and no link, and it is free." = "WARP ترافیک شما را از سرورهای Cloudflare عبور می‌دهد. نه اشتراک می‌خواهد، نه لینک، و رایگان است.";
+"Speed varies with your network, and some sites may still see you as being in your own country." = "سرعتش به شبکه‌ی شما بستگی دارد و ممکن است بعضی سایت‌ها همچنان شما را در کشور خودتان ببینند.";
+"Free" = "رایگان";
+"Free to use — a short ad plays once you connect" = "استفاده رایگان است — بعد از اتصال یک تبلیغ کوتاه پخش می‌شود";
+"The connection needs the short ad watched through to the end. Tap connect and let it finish." = "برای اتصال باید تبلیغ کوتاه را تا پایان ببینید. دوباره وصل شوید و بگذارید تبلیغ تمام شود.";

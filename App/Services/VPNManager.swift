@@ -14,6 +14,8 @@ struct TunnelStats: Decodable {
 final class VPNManager: ObservableObject {
     @Published private(set) var status: NEVPNStatus = .invalid
     @Published var lastError: String?
+    /// Why the tunnel stopped itself, when it wasn't an error: the ad was skipped.
+    @Published var notice: String?
     @Published private(set) var stats: TunnelStats?
     @Published private(set) var connectedSince: Date?
     /// Current throughput in bytes/second, derived from consecutive stats samples.
@@ -80,6 +82,7 @@ final class VPNManager: ObservableObject {
 
     func connect(profile: ServerProfile) async {
         lastError = nil
+        notice = nil
         ProfileStore.shared.writeActiveProfile(profile)
         do {
             let manager = try await prepareManager(for: profile)
@@ -155,7 +158,13 @@ final class VPNManager: ObservableObject {
             let isFreshConnect = connectedSince == nil
             if connectedSince == nil { connectedSince = manager?.connection.connectedDate ?? Date() }
             startStatsTimer()
-            if isFreshConnect { AdsManager.shared.showAfterConnect() }
+            if isFreshConnect {
+                AdsManager.shared.showAfterConnect { [weak self] in
+                    // The ad was closed early: the free connection ends with it.
+                    self?.notice = String(localized: "The connection needs the short ad watched through to the end. Tap connect and let it finish.")
+                    self?.disconnect()
+                }
+            }
         } else {
             connectedSince = nil
             stats = nil
