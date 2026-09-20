@@ -19,10 +19,13 @@ object AppConstants {
     /** Aether's own SOCKS5 port, kept apart from the Xray/sing-box one. */
     const val WARP_SOCKS_PORT = 10819
 
-    const val PING_URL = "https://www.google.com/generate_204"
-    const val PING_URL_PLAIN = "http://cp.cloudflare.com/generate_204"
+    /**
+     * Cloudflare's trace answers with the exit IP and country in two plain
+     * lines, so one request measures the delay and names the exit at once.
+     */
+    const val PROBE_URL = "https://www.cloudflare.com/cdn-cgi/trace"
     const val PING_TIMEOUT_SECONDS = 8
-    /** libXray accepts at most five configs per pingBatch call. */
+    /** Servers probed per core instance; the Go side runs them concurrently. */
     const val PING_BATCH_SIZE = 5
 
     const val VPN_ACTION_CONNECT = "com.allion.skyray.CONNECT"

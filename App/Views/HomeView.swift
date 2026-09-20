@@ -119,6 +119,11 @@ struct HomeView: View {
             .foregroundColor(onField ? Sky.onField : Sky.ink)
             if vpn.isConnected, let since = vpn.connectedSince {
                 Text(since, style: .timer).font(Sky.mono(14, medium: true)).foregroundColor(Sky.onField.opacity(0.9))
+                if let exit = vpn.exitInfo {
+                    // The exit as Cloudflare saw it through the tunnel: proof the traffic flows, and where.
+                    Text(verbatim: exitLine(exit)).font(Sky.mono(12)).foregroundColor(Sky.onField.opacity(0.8))
+                        .lineLimit(1).truncationMode(.middle)
+                }
             } else if profiles.profiles.isEmpty {
                 Text("Your provider gives you a link or a QR code.")
                     .font(Sky.body(14)).foregroundColor(Sky.muted(0.6))
@@ -241,6 +246,11 @@ struct HomeView: View {
             parts.append(String(format: format, date))
         }
         return parts.joined(separator: " · ")
+    }
+
+    private func exitLine(_ exit: (ip: String, country: String?)) -> String {
+        guard let code = exit.country, let flag = CountryLabel.flag(code) else { return exit.ip }
+        return "\(flag) \(CountryLabel.name(code)) · \(exit.ip)"
     }
 
     private func speed(_ bytesPerSecond: Double) -> String {

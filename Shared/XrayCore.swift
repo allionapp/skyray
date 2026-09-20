@@ -13,12 +13,6 @@ enum XrayCoreError: LocalizedError {
     }
 }
 
-struct PingResult {
-    let success: Bool
-    let delayMs: Int
-    let error: String
-}
-
 /// Thin Swift wrapper over libXray's JSON `Invoke` API.
 enum XrayCore {
     private static let apiVersion = 2
@@ -68,26 +62,5 @@ enum XrayCore {
     static func isRunning() -> Bool {
         let data = try? invoke("getXrayState") as? [String: Any]
         return data?["running"] as? Bool ?? false
-    }
-
-    /// Measures real HTTP latency through each outbound. libXray accepts at most
-    /// five configs per call, so callers should batch accordingly.
-    static func ping(outbounds: [[String: Any]],
-                     timeoutSeconds: Int = AppConstants.pingTimeoutSeconds,
-                     url: String = AppConstants.pingURL) throws -> [PingResult] {
-        var configs: [[String: Any]] = []
-        for outbound in outbounds {
-            var tagged = outbound
-            tagged["tag"] = "proxy"
-            let json = try JSONSerialization.data(withJSONObject: ["outbounds": [tagged]])
-            configs.append(["xrayJson": String(decoding: json, as: UTF8.self), "outboundTag": "proxy"])
-        }
-        let data = try invoke("pingBatch", payload: ["configs": configs, "timeout": timeoutSeconds, "url": url]) as? [String: Any]
-        let results = data?["results"] as? [[String: Any]] ?? []
-        return results.map {
-            PingResult(success: $0["success"] as? Bool ?? false,
-                       delayMs: $0["delay"] as? Int ?? -1,
-                       error: $0["error"] as? String ?? "")
-        }
     }
 }

@@ -18,6 +18,10 @@ final class VPNManager: ObservableObject {
     @Published var notice: String?
     @Published private(set) var stats: TunnelStats?
     @Published private(set) var connectedSince: Date?
+    /// Where the tunnel's traffic comes out, fetched through the tunnel itself
+    /// once it is up: the proof that traffic really flows, and through where.
+    @Published private(set) var exitInfo: (ip: String, country: String?)?
+    private var exitTask: Task<Void, Never>?
     /// Current throughput in bytes/second, derived from consecutive stats samples.
     @Published private(set) var uploadSpeed: Double = 0
     @Published private(set) var downloadSpeed: Double = 0
@@ -159,6 +163,7 @@ final class VPNManager: ObservableObject {
             if connectedSince == nil { connectedSince = manager?.connection.connectedDate ?? Date() }
             startStatsTimer()
             if isFreshConnect {
+                fetchExitInfo()
                 AdsManager.shared.showAfterConnect { [weak self] in
                     // The ad was closed early: the free connection ends with it.
                     self?.debugNote = "ad closed before the reward; disconnecting"
@@ -168,6 +173,9 @@ final class VPNManager: ObservableObject {
             }
         } else {
             connectedSince = nil
+            exitTask?.cancel()
+            exitTask = nil
+            exitInfo = nil
             stats = nil
             lastSample = nil
             rawHistory = []
@@ -176,6 +184,38 @@ final class VPNManager: ObservableObject {
             downloadSpeed = 0
             statsTimer?.invalidate()
             statsTimer = nil
+        }
+    }
+
+    /// Asks Cloudflare, through the tunnel, where this connection comes out.
+    /// The app's own traffic rides the tunnel on iOS, so a plain request is
+    /// the honest measurement. Retried a few times: the tunnel reports
+    /// connected a moment before the first bytes can flow.
+    private func fetchExitInfo() {
+        exitTask?.cancel()
+        exitTask = Task { [weak self] in
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = 8
+            config.waitsForConnectivity = false
+            let session = URLSession(configuration: config)
+            guard let url = URL(string: AppConstants.probeURL) else { return }
+            for attempt in 0..<4 {
+                if Task.isCancelled { return }
+                if let (data, _) = try? await session.data(from: url) {
+                    var ip: String?, country: String?
+                    for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
+                        let parts = line.split(separator: "=", maxSplits: 1)
+                        guard parts.count == 2 else { continue }
+                        if parts[0] == "ip" { ip = String(parts[1]) }
+                        if parts[0] == "loc" { country = String(parts[1]) }
+                    }
+                    if let ip {
+                        await MainActor.run { self?.exitInfo = (ip, country) }
+                        return
+                    }
+                }
+                try? await Task.sleep(nanoseconds: UInt64(1 + attempt) * 1_000_000_000)
+            }
         }
     }
 

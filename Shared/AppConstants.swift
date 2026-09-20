@@ -27,11 +27,11 @@ enum AppConstants {
     static let supportURL = "https://allionapp.github.io/skyray-site/support.html"
     static let termsURL = "https://allionapp.github.io/skyray-site/terms.html"
 
-    static let pingURL = "https://www.google.com/generate_204"
-    /// Plain-HTTP probe used for sing-box outbounds (cheaper, no TLS on top of the tunnel).
-    static let pingURLPlain = "http://cp.cloudflare.com/generate_204"
+    /// Cloudflare's trace answers with the exit IP and country in two plain
+    /// lines, so one request measures the delay and names the exit at once.
+    static let probeURL = "https://www.cloudflare.com/cdn-cgi/trace"
     static let pingTimeoutSeconds = 8
-    /// libXray accepts at most five configs per pingBatch call.
+    /// Servers probed per core instance; the Go side runs them concurrently.
     static let pingBatchSize = 5
     static let pingConcurrentBatches = 3
 

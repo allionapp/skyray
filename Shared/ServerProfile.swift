@@ -21,6 +21,10 @@ struct ServerProfile: Codable, Identifiable, Equatable, Hashable {
     var shareLink: String?
     var outboundJSON: String
     var latencyMs: Int?
+    /// Where traffic through this server comes out, as the last probe saw it.
+    var exitIP: String?
+    /// ISO 3166 code of that exit, e.g. "DE".
+    var country: String?
     var subscriptionURL: String?
     var createdAt: Date = Date()
     var core: CoreKind = .xray
@@ -30,7 +34,7 @@ struct ServerProfile: Codable, Identifiable, Equatable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, protocolName, address, port, shareLink, outboundJSON, latencyMs, subscriptionURL, createdAt, core
+        case id, name, protocolName, address, port, shareLink, outboundJSON, latencyMs, exitIP, country, subscriptionURL, createdAt, core
     }
 
     init(id: UUID = UUID(), name: String, protocolName: String, address: String, port: Int,
@@ -52,8 +56,29 @@ struct ServerProfile: Codable, Identifiable, Equatable, Hashable {
         shareLink = try c.decodeIfPresent(String.self, forKey: .shareLink)
         outboundJSON = try c.decode(String.self, forKey: .outboundJSON)
         latencyMs = try c.decodeIfPresent(Int.self, forKey: .latencyMs)
+        exitIP = try c.decodeIfPresent(String.self, forKey: .exitIP)
+        country = try c.decodeIfPresent(String.self, forKey: .country)
         subscriptionURL = try c.decodeIfPresent(String.self, forKey: .subscriptionURL)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         core = try c.decodeIfPresent(CoreKind.self, forKey: .core) ?? .xray
+    }
+}
+
+extension ServerProfile {
+    /// The exit country's flag, or nil until a probe has seen the exit.
+    var flag: String? { country.flatMap(CountryLabel.flag) }
+}
+
+/// Turns an ISO country code into a flag and a name in the user's language.
+enum CountryLabel {
+    static func flag(_ code: String) -> String? {
+        let upper = code.uppercased()
+        guard upper.count == 2, upper.allSatisfy({ $0.isLetter }) else { return nil }
+        // Two regional-indicator symbols render as one flag.
+        return String(upper.unicodeScalars.compactMap { UnicodeScalar(0x1F1E6 + $0.value - 65) }.map(Character.init))
+    }
+
+    static func name(_ code: String) -> String {
+        Locale.current.localizedString(forRegionCode: code.uppercased()) ?? code.uppercased()
     }
 }

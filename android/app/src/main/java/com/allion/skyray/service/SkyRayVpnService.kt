@@ -53,6 +53,9 @@ class SkyRayVpnService : VpnService() {
             private set
         @Volatile var connectedAtMillis: Long = 0L
             private set
+        /** The local SOCKS5 port the running core listens on, or 0 when stopped. */
+        @Volatile var activeSocksPort: Int = 0
+            private set
 
         /** Bytes the tunnel has sent (upload) and received (download) since connect. */
         @Volatile var txBytes: Long = 0L
@@ -152,6 +155,7 @@ class SkyRayVpnService : VpnService() {
 
             isRunning = true
             connectedAtMillis = System.currentTimeMillis()
+            activeSocksPort = socksPort
             store.appendTunnelLog("Connected via ${core.name}")
             startStatsLoop()
         } catch (e: Exception) {
@@ -217,6 +221,7 @@ class SkyRayVpnService : VpnService() {
         tunFd = null
         isRunning = false
         connectedAtMillis = 0
+        activeSocksPort = 0
         txBytes = 0
         rxBytes = 0
         store.appendTunnelLog("Disconnected")

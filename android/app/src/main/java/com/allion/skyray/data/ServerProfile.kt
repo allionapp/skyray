@@ -24,12 +24,19 @@ data class ServerProfile(
     var shareLink: String? = null,
     var outboundJson: String,
     var latencyMs: Int? = null,
+    /** Where traffic through this server comes out, as the last probe saw it. */
+    var exitIp: String? = null,
+    /** ISO 3166 code of that exit, e.g. "DE". */
+    var country: String? = null,
     var subscriptionUrl: String? = null,
     var createdAt: Long = System.currentTimeMillis(),
     var core: CoreKind = CoreKind.xray,
 ) {
     val subtitle: String
         get() = "${protocolName.uppercase()} · $address:$port" + if (core == CoreKind.singbox) " · sing-box" else ""
+
+    /** The exit country's flag, or null until a probe has seen the exit. */
+    val flag: String? get() = country?.let { CountryLabel.flag(it) }
 
     /** "VLESS · XHTTP · TLS": what tells servers apart when their names only differ in the tail. */
     val kindLabel: String
@@ -61,6 +68,8 @@ data class ServerProfile(
         put("shareLink", shareLink)
         put("outboundJSON", outboundJson)
         put("latencyMs", latencyMs)
+        put("exitIP", exitIp)
+        put("country", country)
         put("subscriptionURL", subscriptionUrl)
         put("createdAt", createdAt)
         put("core", core.name)
@@ -81,6 +90,8 @@ data class ServerProfile(
                 shareLink = o.optString("shareLink", null.toString()).takeIf { o.has("shareLink") && !o.isNull("shareLink") },
                 outboundJson = outbound,
                 latencyMs = if (o.has("latencyMs") && !o.isNull("latencyMs")) o.optInt("latencyMs") else null,
+                exitIp = if (o.has("exitIP") && !o.isNull("exitIP")) o.optString("exitIP") else null,
+                country = if (o.has("country") && !o.isNull("country")) o.optString("country") else null,
                 subscriptionUrl = if (o.has("subscriptionURL") && !o.isNull("subscriptionURL")) o.optString("subscriptionURL") else null,
                 createdAt = o.optLong("createdAt", System.currentTimeMillis()),
                 core = runCatching { CoreKind.valueOf(o.optString("core", "xray")) }.getOrDefault(CoreKind.xray),
@@ -135,4 +146,17 @@ data class SubscriptionInfo(
             lastUpdated = o.optLong("lastUpdated", System.currentTimeMillis()),
         )
     }
+}
+
+/** Turns an ISO country code into a flag and a name in the user's language. */
+object CountryLabel {
+    fun flag(code: String): String? {
+        val upper = code.uppercase()
+        if (upper.length != 2 || !upper.all { it in 'A'..'Z' }) return null
+        // Two regional-indicator symbols render as one flag.
+        return upper.map { String(Character.toChars(0x1F1E6 + (it - 'A'))) }.joinToString("")
+    }
+
+    fun name(code: String): String =
+        java.util.Locale("", code.uppercase()).getDisplayCountry(java.util.Locale.getDefault()).ifEmpty { code.uppercase() }
 }

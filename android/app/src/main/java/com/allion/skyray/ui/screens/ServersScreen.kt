@@ -6,6 +6,7 @@ import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -247,7 +248,15 @@ private fun ServerRow(profile: ServerProfile, selected: Boolean, pending: Boolea
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(profile.name.middleTrim(), style = if (selected) skyHeading(15) else skySemibold(15), color = Sky.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(profile.kindLabel, style = skyMono(11), color = Sky.muted(0.5f), maxLines = 1)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val flag = profile.flag
+                    val code = profile.country
+                    if (flag != null && code != null) {
+                        // The exit country: where this server's traffic really comes out.
+                        Text(ltr("$flag ${code.uppercase()}"), style = skyMono(11, medium = true), color = Sky.muted(0.7f), maxLines = 1)
+                    }
+                    Text(profile.kindLabel, style = skyMono(11), color = Sky.muted(0.5f), maxLines = 1)
+                }
             }
             Spacer(Modifier.width(8.dp))
             LatencyLabel(profile.latencyMs, pending)

@@ -177,7 +177,13 @@ struct ServerPickerView: View {
                     Text(profile.name).font(selected ? Sky.heading(15) : Sky.semibold(15)).foregroundColor(Sky.ink).lineLimit(1)
                         // Provider names share a long prefix; the tail is what tells them apart.
                         .truncationMode(.middle)
-                    Text(verbatim: profile.kindLabel).font(Sky.mono(11)).foregroundColor(Sky.muted(0.5)).lineLimit(1)
+                    HStack(spacing: 6) {
+                        if let flag = profile.flag, let code = profile.country {
+                            // The exit country: where this server's traffic really comes out.
+                            Text(verbatim: "\(flag) \(code.uppercased())").font(Sky.mono(11, medium: true)).foregroundColor(Sky.muted(0.7))
+                        }
+                        Text(verbatim: profile.kindLabel).font(Sky.mono(11)).foregroundColor(Sky.muted(0.5)).lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 8)
                 latency(profile.latencyMs)

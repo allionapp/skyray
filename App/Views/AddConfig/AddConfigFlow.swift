@@ -284,13 +284,14 @@ final class CheckRunner: ObservableObject {
         var latency: Int? = nil
         if tcp >= 0 {
             states[.speed] = .running
-            let ping: PingResult = await Task.detached { [profile] in
-                if profile.core == .singbox { return SingboxCore.ping(outboundJSON: profile.outboundJSON) }
-                guard let d = profile.outboundJSON.data(using: .utf8), let ob = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
-                      let r = try? XrayCore.ping(outbounds: [ob]).first else { return PingResult(success: false, delayMs: -1, error: "") }
-                return r
+            let ping: ProbeResult = await Task.detached { [profile] in
+                CoreProbe.probe([profile]).first ?? .failed
             }.value
             latency = ping.success ? ping.delayMs : nil
+            if ping.success {
+                profile.exitIP = ping.exitIP
+                profile.country = ping.country
+            }
             states[.speed] = ping.success ? .done : .failed
         }
         if Task.isCancelled { return }

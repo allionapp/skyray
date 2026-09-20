@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.allion.skyray.R
+import com.allion.skyray.data.CountryLabel
 import com.allion.skyray.data.SubscriptionInfo
 import com.allion.skyray.service.ProfilesViewModel
 import com.allion.skyray.service.VpnManager
@@ -140,6 +141,7 @@ fun HomeScreen(
             Text(status, style = skyHeading(22), color = if (onField) Sky.onField else Sky.ink, textAlign = TextAlign.Center)
             if (isConnected) {
                 SessionTimer(vpnManager)
+                ExitLine(vpnManager)
                 LiveSpeeds(vpnManager)
             } else if (profiles.isEmpty()) {
                 Spacer(Modifier.height(6.dp))
@@ -203,6 +205,19 @@ private fun SessionTimer(vpnManager: VpnManager) {
     if (since > 0L) {
         Spacer(Modifier.height(6.dp))
         Text(formatDuration(now - since), style = skyMono(14, medium = true), color = Sky.onField.copy(alpha = 0.9f))
+    }
+}
+
+/** The exit as Cloudflare saw it through the tunnel: proof the traffic flows, and where. */
+@Composable
+private fun ExitLine(vpnManager: VpnManager) {
+    val exit by vpnManager.exitInfo.collectAsState()
+    exit?.let { info ->
+        val code = info.country
+        val flag = code?.let { CountryLabel.flag(it) }
+        val line = if (code != null && flag != null) "$flag ${CountryLabel.name(code)} · ${info.ip}" else info.ip
+        Spacer(Modifier.height(4.dp))
+        Text(ltr(line), style = skyMono(12), color = Sky.onField.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

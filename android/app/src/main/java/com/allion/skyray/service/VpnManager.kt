@@ -42,6 +42,13 @@ class VpnManager(private val context: Context) {
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
     private val _connectedSinceMillis = MutableStateFlow(0L)
     val connectedSinceMillis: StateFlow<Long> = _connectedSinceMillis.asStateFlow()
+    /**
+     * Where the tunnel's traffic comes out, asked through the running core
+     * once it is up: the proof that traffic really flows, and through where.
+     */
+    private val _exitInfo = MutableStateFlow<ExitInfo?>(null)
+    val exitInfo: StateFlow<ExitInfo?> = _exitInfo.asStateFlow()
+    private var exitJob: Job? = null
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
     private val _stats = MutableStateFlow(TunnelStats(0, 0))
@@ -92,7 +99,12 @@ class VpnManager(private val context: Context) {
                     lastTx = 0
                     lastRx = 0
                 }
+                if (!running && wasRunning) {
+                    exitJob?.cancel()
+                    _exitInfo.value = null
+                }
                 if (running && !wasRunning) {
+                    fetchExitInfo(SkyRayVpnService.activeSocksPort)
                     (context as? Activity)?.let { activity ->
                         AdsManager.showAfterConnect(activity) {
                             // The ad was closed early: the free connection ends with it.
@@ -104,6 +116,40 @@ class VpnManager(private val context: Context) {
                 }
                 wasRunning = running
                 kotlinx.coroutines.delay(1000)
+            }
+        }
+    }
+
+    /**
+     * Asks Cloudflare where this connection comes out. The app is excluded
+     * from its own VPN (so the core can dial out), so the request goes through
+     * the core's local SOCKS port rather than the tunnel interface. Retried a
+     * few times: the service reports connected a moment before bytes flow.
+     */
+    private fun fetchExitInfo(socksPort: Int) {
+        exitJob?.cancel()
+        if (socksPort <= 0) return
+        exitJob = scope.launch(Dispatchers.IO) {
+            val proxy = java.net.Proxy(java.net.Proxy.Type.SOCKS, java.net.InetSocketAddress("127.0.0.1", socksPort))
+            repeat(4) { attempt ->
+                val found = runCatching {
+                    val connection = java.net.URL(AppConstants.PROBE_URL).openConnection(proxy) as java.net.HttpURLConnection
+                    connection.connectTimeout = 8000
+                    connection.readTimeout = 8000
+                    connection.useCaches = false
+                    try {
+                        val lines = connection.inputStream.bufferedReader().use { it.readText() }.lines()
+                        val fields = lines.mapNotNull { line -> line.split("=", limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }.toMap()
+                        fields["ip"]?.let { ExitInfo(it, fields["loc"]) }
+                    } finally {
+                        connection.disconnect()
+                    }
+                }.getOrNull()
+                if (found != null) {
+                    _exitInfo.value = found
+                    return@launch
+                }
+                kotlinx.coroutines.delay((1 + attempt) * 1000L)
             }
         }
     }
@@ -144,3 +190,6 @@ class VpnManager(private val context: Context) {
         }
     }
 }
+
+/** The tunnel's exit as Cloudflare saw it: the address and, when known, its country code. */
+data class ExitInfo(val ip: String, val country: String?)

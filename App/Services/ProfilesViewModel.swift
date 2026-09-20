@@ -108,6 +108,8 @@ final class ProfilesViewModel: ObservableObject {
             var merged = existing
             merged.name = profile.name
             merged.latencyMs = profile.latencyMs ?? existing.latencyMs
+            merged.exitIP = profile.exitIP ?? existing.exitIP
+            merged.country = profile.country ?? existing.country
             update(merged)
             return merged
         }
@@ -222,7 +224,7 @@ final class ProfilesViewModel: ObservableObject {
             let key = resolved.url
             let body = String(decoding: data, as: UTF8.self)
             let old = profiles.filter { $0.subscriptionURL == key }
-            let oldLatency = Dictionary(old.map { ($0.outboundJSON, $0.latencyMs) }, uniquingKeysWith: { a, _ in a })
+            let oldByOutbound = Dictionary(old.map { ($0.outboundJSON, $0) }, uniquingKeysWith: { a, _ in a })
             let previousSelection = selectedProfile
             profiles.removeAll { $0.subscriptionURL == key }
             let added = await importText(body, subscriptionURL: key)
@@ -231,9 +233,13 @@ final class ProfilesViewModel: ObservableObject {
                 profiles.append(contentsOf: old)
                 persist()
             } else {
-                // Carry over latencies and keep the same server selected after a refresh.
+                // Carry over what the probes found and keep the same server selected after a refresh.
                 for i in profiles.indices where profiles[i].subscriptionURL == key {
-                    if let ms = oldLatency[profiles[i].outboundJSON] { profiles[i].latencyMs = ms }
+                    if let prev = oldByOutbound[profiles[i].outboundJSON] {
+                        profiles[i].latencyMs = prev.latencyMs
+                        profiles[i].exitIP = prev.exitIP
+                        profiles[i].country = prev.country
+                    }
                 }
                 if let prev = previousSelection, prev.subscriptionURL == key,
                    let same = profiles.first(where: { $0.outboundJSON == prev.outboundJSON }) {
@@ -324,8 +330,9 @@ final class ProfilesViewModel: ObservableObject {
 
     // MARK: - Latency
 
-    /// Pings in batches of five with limited concurrency so hundreds of servers
-    /// finish in reasonable time without spawning hundreds of Xray instances.
+    /// Probes every server, five per core instance and three instances at a
+    /// time, so hundreds of servers finish in reasonable time. Each probe
+    /// records the delay and where the traffic comes out.
     /// `subset` limits the test to those servers, e.g. the ones a subscription just brought in.
     func pingAll(only subset: [ServerProfile]? = nil) async {
         // WARP has no outbound of its own, so neither core can test it.
@@ -333,42 +340,25 @@ final class ProfilesViewModel: ObservableObject {
         guard !isPinging, !snapshot.isEmpty else { return }
         isPinging = true
         pingProgress = (0, snapshot.count)
-        // sing-box profiles are pinged one at a time (each is its own tiny instance);
-        // Xray profiles go through libXray's batch API, five per call.
-        let xrayProfiles = snapshot.filter { $0.core == .xray }
-        var chunks = stride(from: 0, to: xrayProfiles.count, by: AppConstants.pingBatchSize).map {
-            Array(xrayProfiles[$0..<min($0 + AppConstants.pingBatchSize, xrayProfiles.count)])
+        let chunks = stride(from: 0, to: snapshot.count, by: AppConstants.pingBatchSize).map {
+            Array(snapshot[$0..<min($0 + AppConstants.pingBatchSize, snapshot.count)])
         }
-        chunks += snapshot.filter { $0.core == .singbox }.map { [$0] }
         pingTask = Task { [weak self] in
-            await withTaskGroup(of: [(UUID, Int)].self) { group in
+            await withTaskGroup(of: [(UUID, ProbeResult)].self) { group in
                 var next = 0
                 func enqueue() {
                     guard next < chunks.count, !Task.isCancelled else { return }
                     let chunk = chunks[next]; next += 1
                     group.addTask(priority: .userInitiated) {
-                        if chunk.count == 1, chunk[0].core == .singbox {
-                            let r = SingboxCore.ping(outboundJSON: chunk[0].outboundJSON)
-                            return [(chunk[0].id, r.success ? r.delayMs : -1)]
-                        }
-                        let outbounds = chunk.compactMap { p -> [String: Any]? in
-                            guard let d = p.outboundJSON.data(using: .utf8) else { return nil }
-                            return try? JSONSerialization.jsonObject(with: d) as? [String: Any]
-                        }
-                        let results = (try? XrayCore.ping(outbounds: outbounds)) ?? []
-                        return chunk.enumerated().map { i, p in
-                            let r = i < results.count ? results[i] : nil
-                            return (p.id, (r?.success ?? false) ? (r?.delayMs ?? -1) : -1)
-                        }
+                        let results = CoreProbe.probe(chunk)
+                        return zip(chunk, results).map { ($0.id, $1) }
                     }
                 }
                 for _ in 0..<AppConstants.pingConcurrentBatches { enqueue() }
                 for await batch in group {
                     await MainActor.run {
                         guard let self else { return }
-                        for (id, ms) in batch {
-                            if let i = self.profiles.firstIndex(where: { $0.id == id }) { self.profiles[i].latencyMs = ms }
-                        }
+                        for (id, result) in batch { self.record(result, for: id) }
                         self.pingProgress = (self.pingProgress.done + batch.count, self.pingProgress.total)
                     }
                     enqueue()
@@ -380,6 +370,17 @@ final class ProfilesViewModel: ObservableObject {
         pingTask = nil
         isPinging = false
         persist()
+    }
+
+    /// Writes a probe's findings onto the server. A failed probe keeps the
+    /// last known exit: the server is down now, not somewhere else.
+    func record(_ result: ProbeResult, for id: UUID) {
+        guard let i = profiles.firstIndex(where: { $0.id == id }) else { return }
+        profiles[i].latencyMs = result.success ? result.delayMs : -1
+        if result.success {
+            profiles[i].exitIP = result.exitIP ?? profiles[i].exitIP
+            profiles[i].country = result.country ?? profiles[i].country
+        }
     }
 
     /// Plain TCP connect time to the server, usable while the VPN is off or on.

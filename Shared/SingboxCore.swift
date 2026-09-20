@@ -23,16 +23,4 @@ enum SingboxCore {
         var error: NSError?
         if !RaycoreSingboxTest(configJSON, &error) { throw error ?? XrayCoreError.invoke("Invalid sing-box configuration") }
     }
-
-    /// Real HTTP round trip through one outbound (JSON of a single sing-box outbound).
-    static func ping(outboundJSON: String,
-                     timeoutSeconds: Int = AppConstants.pingTimeoutSeconds,
-                     url: String = AppConstants.pingURLPlain) -> PingResult {
-        var delay: Int64 = 0
-        var error: NSError?
-        if RaycoreSingboxPing(outboundJSON, url, timeoutSeconds * 1000, &delay, &error) {
-            return PingResult(success: true, delayMs: Int(delay), error: "")
-        }
-        return PingResult(success: false, delayMs: -1, error: error?.localizedDescription ?? "ping failed")
-    }
 }

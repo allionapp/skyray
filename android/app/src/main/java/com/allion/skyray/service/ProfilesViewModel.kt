@@ -2,6 +2,7 @@ package com.allion.skyray.service
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.allion.skyray.core.ProbeResult
 import com.allion.skyray.core.RaycoreBridge
 import com.allion.skyray.core.ShareLinkParser
 import com.allion.skyray.core.SingboxConfigBuilder
@@ -143,8 +144,16 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
 
     fun add(profile: ServerProfile) {
         // Identity is the outbound itself: one subscription often carries several
-        // servers on the same host and port that differ only by transport.
-        _profiles.value = _profiles.value.filterNot { it.outboundJson == profile.outboundJson } + profile
+        // servers on the same host and port that differ only by transport. A
+        // refresh brings the same server back; what the probes learnt stays.
+        val existing = _profiles.value.firstOrNull { it.outboundJson == profile.outboundJson }
+        val merged = if (existing == null) profile else profile.copy(
+            id = existing.id,
+            latencyMs = profile.latencyMs ?: existing.latencyMs,
+            exitIp = profile.exitIp ?: existing.exitIp,
+            country = profile.country ?: existing.country,
+        )
+        _profiles.value = _profiles.value.filterNot { it.outboundJson == profile.outboundJson } + merged
         persist()
     }
 
@@ -227,19 +236,17 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
             onStep(CheckStep.Testing(profile))
             try {
                 if (profile.core == CoreKind.xray) {
-                    val config = XrayConfigBuilder.runtimeConfig(profile.outboundJson, hasGeoData = true)
-                    RaycoreBridge.testXrayConfig(config)
-                    val ping = RaycoreBridge.pingBatch(listOf(JSONObject(profile.outboundJson)), AppConstants.PING_TIMEOUT_SECONDS, AppConstants.PING_URL).firstOrNull()
-                    val latency = if (ping?.success == true) ping.delayMs else null
-                    profile.latencyMs = latency
-                    onStep(CheckStep.Reached(profile, latency))
+                    RaycoreBridge.testXrayConfig(XrayConfigBuilder.runtimeConfig(profile.outboundJson, hasGeoData = true))
                 } else {
-                    val config = SingboxConfigBuilder.runtimeConfig(profile.outboundJson)
-                    RaycoreBridge.testSingboxConfig(config)
-                    val ping = RaycoreBridge.singboxPing(profile.outboundJson, AppConstants.PING_URL_PLAIN, AppConstants.PING_TIMEOUT_SECONDS * 1000)
-                    profile.latencyMs = if (ping.success) ping.delayMs else null
-                    onStep(CheckStep.Reached(profile, profile.latencyMs))
+                    RaycoreBridge.testSingboxConfig(SingboxConfigBuilder.runtimeConfig(profile.outboundJson))
                 }
+                val probe = RaycoreBridge.probeBatch(listOf(profile)).first()
+                profile.latencyMs = if (probe.success) probe.delayMs else null
+                if (probe.success) {
+                    profile.exitIp = probe.exitIp
+                    profile.country = probe.country
+                }
+                onStep(CheckStep.Reached(profile, profile.latencyMs))
             } catch (e: Exception) {
                 onStep(CheckStep.Reached(profile, null))
             }
@@ -333,9 +340,9 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
     }
 
     /**
-     * Real delay through each server: libXray's batch ping, five outbounds per
-     * call and three calls at once; sing-box servers one by one. [subset]
-     * limits the test, e.g. to the servers a subscription just brought in.
+     * Probes every server, five per core instance and three instances at a
+     * time. Each probe records the delay and where the traffic comes out.
+     * [subset] limits the test, e.g. to the servers a subscription just brought in.
      */
     suspend fun pingAll(subset: List<ServerProfile>? = null) {
         // WARP has no outbound of its own, so neither core can test it.
@@ -344,16 +351,13 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
         _isPinging.value = true
         _pingProgress.value = 0 to snapshot.size
         try {
-            val chunks = snapshot.filter { it.core == CoreKind.xray }.chunked(AppConstants.PING_BATCH_SIZE) +
-                snapshot.filter { it.core == CoreKind.singbox }.map { listOf(it) }
             val gate = kotlinx.coroutines.sync.Semaphore(3)
             kotlinx.coroutines.coroutineScope {
-                chunks.forEach { chunk ->
+                snapshot.chunked(AppConstants.PING_BATCH_SIZE).forEach { chunk ->
                     launch(Dispatchers.IO) {
                         gate.acquire()
                         try {
-                            val results = pingChunk(chunk)
-                            applyLatencies(results)
+                            record(chunk.map { it.id }.zip(RaycoreBridge.probeBatch(chunk)))
                         } finally {
                             gate.release()
                         }
@@ -367,20 +371,18 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
         }
     }
 
-    private fun pingChunk(chunk: List<ServerProfile>): List<Pair<String, Int>> = runCatching {
-        if (chunk.size == 1 && chunk[0].core == CoreKind.singbox) {
-            val r = RaycoreBridge.singboxPing(chunk[0].outboundJson, AppConstants.PING_URL_PLAIN, AppConstants.PING_TIMEOUT_SECONDS * 1000)
-            listOf(chunk[0].id to if (r.success) r.delayMs else -1)
-        } else {
-            val results = RaycoreBridge.pingBatch(chunk.map { JSONObject(it.outboundJson) }, AppConstants.PING_TIMEOUT_SECONDS, AppConstants.PING_URL)
-            chunk.mapIndexed { i, p -> p.id to (results.getOrNull(i)?.takeIf { it.success }?.delayMs ?: -1) }
-        }
-    }.getOrElse { chunk.map { it.id to -1 } }
-
+    /**
+     * Writes the probes' findings onto their servers. A failed probe keeps the
+     * last known exit: the server is down now, not somewhere else.
+     */
     @Synchronized
-    private fun applyLatencies(results: List<Pair<String, Int>>) {
+    private fun record(results: List<Pair<String, ProbeResult>>) {
         val byId = results.toMap()
-        _profiles.value = _profiles.value.map { p -> byId[p.id]?.let { p.copy(latencyMs = it) } ?: p }
+        _profiles.value = _profiles.value.map { p ->
+            val r = byId[p.id] ?: return@map p
+            if (r.success) p.copy(latencyMs = r.delayMs, exitIp = r.exitIp ?: p.exitIp, country = r.country ?: p.country)
+            else p.copy(latencyMs = -1)
+        }
         val (done, total) = _pingProgress.value
         _pingProgress.value = (done + results.size) to total
     }

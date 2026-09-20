@@ -2,11 +2,13 @@ package com.allion.skyray.core
 
 import org.json.JSONArray
 import org.json.JSONObject
+import com.allion.skyray.data.AppConstants
+import com.allion.skyray.data.CoreKind
+import com.allion.skyray.data.ServerProfile
 import raycore.Raycore
 
 class XrayCoreException(message: String) : Exception(message)
 
-data class PingResult(val success: Boolean, val delayMs: Int, val error: String)
 
 /**
  * Thin Kotlin wrapper over the gomobile Android bindings in raycore.aar
@@ -63,26 +65,6 @@ object RaycoreBridge {
     fun isXrayRunning(): Boolean =
         runCatching { (xrayInvoke("getXrayState") as? JSONObject)?.optBoolean("running") }.getOrDefault(false) ?: false
 
-    /** libXray accepts at most five configs per call. */
-    @Throws(XrayCoreException::class)
-    fun pingBatch(outbounds: List<JSONObject>, timeoutSeconds: Int, url: String): List<PingResult> {
-        val configs = JSONArray()
-        outbounds.forEach { outbound ->
-            val tagged = JSONObject(outbound.toString()).put("tag", "proxy")
-            val json = JSONObject().put("outbounds", JSONArray().put(tagged))
-            configs.put(JSONObject().put("xrayJson", json.toString()).put("outboundTag", "proxy"))
-        }
-        val data = xrayInvoke(
-            "pingBatch",
-            JSONObject().put("configs", configs).put("timeout", timeoutSeconds).put("url", url)
-        ) as? JSONObject
-        val results = data?.optJSONArray("results") ?: JSONArray()
-        return (0 until results.length()).map {
-            val r = results.getJSONObject(it)
-            PingResult(r.optBoolean("success", false), r.optInt("delay", -1), r.optString("error", ""))
-        }
-    }
-
     // MARK: sing-box (SSH, TUIC)
 
     fun singboxVersion(): String = runCatching { Raycore.singboxVersion() }.getOrDefault("unknown")
@@ -99,10 +81,37 @@ object RaycoreBridge {
     @Throws(Exception::class)
     fun testSingboxConfig(configJson: String) = Raycore.singboxTest(configJson)
 
-    fun singboxPing(outboundJson: String, url: String, timeoutMs: Int): PingResult = try {
-        val delay = Raycore.singboxPing(outboundJson, url, timeoutMs.toLong())
-        PingResult(true, delay.toInt(), "")
-    } catch (e: Exception) {
-        PingResult(false, -1, e.message ?: "ping failed")
+    // MARK: probes (both cores)
+
+    /**
+     * One HTTP request through each server, inside the Go runtime: delay and
+     * where the traffic comes out. Results come back in the order given.
+     */
+    fun probeBatch(profiles: List<ServerProfile>, timeoutSeconds: Int = AppConstants.PING_TIMEOUT_SECONDS): List<ProbeResult> {
+        val items = JSONArray()
+        profiles.forEach { p ->
+            items.put(JSONObject().put("core", if (p.core == CoreKind.singbox) "singbox" else "xray").put("outbound", JSONObject(p.outboundJson)))
+        }
+        val reply = runCatching { Raycore.probeBatch(items.toString(), AppConstants.PROBE_URL, timeoutSeconds * 1000L) }
+            .getOrElse { return profiles.map { ProbeResult.FAILED } }
+        val results = runCatching { JSONArray(reply) }.getOrElse { return profiles.map { ProbeResult.FAILED } }
+        return profiles.indices.map { i ->
+            val r = results.optJSONObject(i) ?: return@map ProbeResult.FAILED
+            ProbeResult(
+                delayMs = r.optInt("delay", -1),
+                exitIp = r.optString("ip", "").ifEmpty { null },
+                country = r.optString("country", "").ifEmpty { null },
+                error = r.optString("error", ""),
+            )
+        }
+    }
+}
+
+/** What one probe found about a server; [delayMs] is -1 when it failed. */
+data class ProbeResult(val delayMs: Int, val exitIp: String?, val country: String?, val error: String) {
+    val success: Boolean get() = delayMs >= 0
+
+    companion object {
+        val FAILED = ProbeResult(-1, null, null, "")
     }
 }
