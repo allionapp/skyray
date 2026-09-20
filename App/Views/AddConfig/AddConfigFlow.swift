@@ -277,7 +277,8 @@ final class CheckRunner: ObservableObject {
         if Task.isCancelled { return }
 
         states[.reach] = .running
-        let tcp = await TCPPing.measure(host: profile.address, port: profile.port)
+        // A DNS tunnel answers no TCP handshake; the probe below is its only test.
+        let tcp = profile.hasDialableEndpoint ? await TCPPing.measure(host: profile.address, port: profile.port) : 0
         states[.reach] = tcp >= 0 ? .done : .failed
         if Task.isCancelled { return }
 

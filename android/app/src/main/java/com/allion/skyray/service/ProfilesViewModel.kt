@@ -314,6 +314,8 @@ class ProfilesViewModel(private val store: ProfileStore) : ViewModel() {
 
     /** TCP handshake time to the server itself, or -1. */
     suspend fun tcpLatency(profile: ServerProfile): Int = withContext(Dispatchers.IO) {
+        // A DNS tunnel answers no TCP handshake; only a probe can test it.
+        if (!profile.hasDialableEndpoint) return@withContext 0
         runCatching {
             java.net.Socket().use { socket ->
                 val start = System.currentTimeMillis()

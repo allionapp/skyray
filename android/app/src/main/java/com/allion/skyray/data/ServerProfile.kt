@@ -38,6 +38,12 @@ data class ServerProfile(
     /** The exit country's flag, or null until a probe has seen the exit. */
     val flag: String? get() = country?.let { CountryLabel.flag(it) }
 
+    /**
+     * A DNS tunnel has no host to open a socket to — it speaks to whatever
+     * resolver answers — so a TCP handshake test says nothing about it.
+     */
+    val hasDialableEndpoint: Boolean get() = protocolName != "dnstt"
+
     /** "VLESS · XHTTP · TLS": what tells servers apart when their names only differ in the tail. */
     val kindLabel: String
         get() {

@@ -67,6 +67,10 @@ struct ServerProfile: Codable, Identifiable, Equatable, Hashable {
 extension ServerProfile {
     /// The exit country's flag, or nil until a probe has seen the exit.
     var flag: String? { country.flatMap(CountryLabel.flag) }
+
+    /// A DNS tunnel has no host to open a socket to — it speaks to whatever
+    /// resolver answers — so a TCP handshake test says nothing about it.
+    var hasDialableEndpoint: Bool { protocolName != "dnstt" }
 }
 
 /// Turns an ISO country code into a flag and a name in the user's language.

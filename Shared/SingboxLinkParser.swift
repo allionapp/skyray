@@ -3,10 +3,11 @@ import Foundation
 /// Parses share links for protocols only sing-box provides on this app:
 /// `ssh://user:password@host:port#name`, TUIC v5
 /// `tuic://uuid:password@host:port?congestion_control=bbr&udp_relay_mode=native&sni=…&alpn=h3&allow_insecure=1#name`,
-/// AnyTLS `anytls://password@host:port?sni=…#name` and Hysteria v1
-/// `hysteria://host:port?auth=…&upmbps=100&downmbps=100&peer=…#name`.
+/// AnyTLS `anytls://password@host:port?sni=…#name`, Hysteria v1
+/// `hysteria://host:port?auth=…&upmbps=100&downmbps=100&peer=…#name` and
+/// DNSTT `dnstt://?domain=…&publicKey=…&resolver=8.8.8.8:53#name`.
 enum SingboxLinkParser {
-    static let schemes = ["ssh://", "tuic://", "anytls://", "hysteria://"]
+    static let schemes = ["ssh://", "tuic://", "anytls://", "hysteria://", "dnstt://"]
 
     static func handles(_ line: String) -> Bool {
         let lower = line.lowercased()
@@ -15,8 +16,13 @@ enum SingboxLinkParser {
 
     static func parse(_ line: String) throws -> ServerProfile {
         guard let components = URLComponents(string: line.trimmingCharacters(in: .whitespaces)),
-              let scheme = components.scheme?.lowercased(),
-              let host = components.host, !host.isEmpty else {
+              let scheme = components.scheme?.lowercased() else {
+            throw XrayCoreError.invoke("Invalid link")
+        }
+        // A DNS tunnel names a domain rather than a host to dial, so it is
+        // read before the others, which all need one.
+        if scheme == "dnstt" { return try parseDnstt(components, line: line) }
+        guard let host = components.host, !host.isEmpty else {
             throw XrayCoreError.invoke("Invalid link")
         }
         let query = Dictionary((components.queryItems ?? []).map { ($0.name.lowercased(), $0.value ?? "") }, uniquingKeysWith: { a, _ in a })
@@ -94,6 +100,46 @@ enum SingboxLinkParser {
         let data = try JSONSerialization.data(withJSONObject: outbound, options: [.sortedKeys])
         return ServerProfile(name: name?.isEmpty == false ? name! : "\(host):\(port)",
                              protocolName: protocolName, address: host, port: port, shareLink: line,
+                             outboundJSON: String(decoding: data, as: UTF8.self), core: .singbox)
+    }
+
+
+    /// `dnstt://?domain=t.example.com&publicKey=<hex>&resolver=8.8.8.8:53&resolver=1.1.1.1:53#name`,
+    /// the shape Hiddify hands out. Resolvers repeat; a comma-separated list is taken too.
+    private static func parseDnstt(_ components: URLComponents, line: String) throws -> ServerProfile {
+        let items = components.queryItems ?? []
+        func value(_ names: [String]) -> String? {
+            for name in names {
+                if let found = items.first(where: { $0.name.lowercased() == name })?.value, !found.isEmpty {
+                    return found.removingPercentEncoding ?? found
+                }
+            }
+            return nil
+        }
+        guard let domain = value(["domain"]) else { throw XrayCoreError.invoke("dnstt link has no domain") }
+        guard let publicKey = value(["publickey", "pubkey", "public_key"]) else {
+            throw XrayCoreError.invoke("dnstt link has no public key")
+        }
+        let resolvers = items
+            .filter { ["resolver", "resolvers"].contains($0.name.lowercased()) }
+            .flatMap { ($0.value?.removingPercentEncoding ?? $0.value ?? "").split(separator: ",") }
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard !resolvers.isEmpty else { throw XrayCoreError.invoke("dnstt link has no resolver") }
+
+        var outbound: [String: Any] = ["type": "dnstt", "domain": domain, "pubkey": publicKey, "resolvers": resolvers]
+        if let perResolver = value(["tunnel_per_resolver", "tunnel-per-resolver"]).flatMap(Int.init) {
+            outbound["tunnel-per-resolver"] = perResolver
+        }
+        if let recordType = value(["record-type", "record_type"]) { outbound["record-type"] = recordType }
+        if let upstream = value(["upstream"]) { outbound["upstream"] = upstream }
+        if ["1", "true"].contains((value(["dnstt-compat", "dnstt_compat"]) ?? "").lowercased()) {
+            outbound["dnstt-compat"] = true
+        }
+        let data = try JSONSerialization.data(withJSONObject: outbound, options: [.sortedKeys])
+        let name = components.fragment?.removingPercentEncoding?.trimmingCharacters(in: .whitespaces)
+        return ServerProfile(name: name?.isEmpty == false ? name! : domain,
+                             protocolName: "dnstt", address: domain, port: 53, shareLink: line,
                              outboundJSON: String(decoding: data, as: UTF8.self), core: .singbox)
     }
 

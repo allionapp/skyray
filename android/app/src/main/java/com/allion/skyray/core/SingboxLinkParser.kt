@@ -10,11 +10,12 @@ import java.net.URLDecoder
 /**
  * Parses share links for protocols only sing-box provides: `ssh://`, TUIC v5
  * `tuic://uuid:password@host:port?...`, AnyTLS `anytls://password@host:port?sni=...`
- * and Hysteria v1 `hysteria://host:port?auth=...&upmbps=100&downmbps=100`.
+ * Hysteria v1 `hysteria://host:port?auth=...&upmbps=100&downmbps=100` and
+ * DNSTT `dnstt://?domain=...&publicKey=...&resolver=8.8.8.8:53`.
  * Port of Shared/SingboxLinkParser.swift.
  */
 object SingboxLinkParser {
-    val schemes = listOf("ssh://", "tuic://", "anytls://", "hysteria://")
+    val schemes = listOf("ssh://", "tuic://", "anytls://", "hysteria://", "dnstt://")
 
     fun handles(line: String): Boolean = schemes.any { line.lowercase().startsWith(it) }
 
@@ -26,6 +27,9 @@ object SingboxLinkParser {
         val uri = runCatching { Uri.parse(trimmed) }.getOrNull()
             ?: throw XrayCoreException("Invalid link")
         val scheme = uri.scheme?.lowercase() ?: throw XrayCoreException("Invalid link")
+        // A DNS tunnel names a domain rather than a host to dial, so it is
+        // read before the others, which all need one.
+        if (scheme == "dnstt") return parseDnstt(uri, trimmed)
         val host = uri.host?.takeIf { it.isNotEmpty() } ?: throw XrayCoreException("Invalid link")
         val query = uri.queryParameterNames.associateWith { name -> uri.getQueryParameter(name) ?: "" }
             .mapKeys { it.key.lowercase() }
@@ -117,6 +121,46 @@ object SingboxLinkParser {
         return ServerProfile(
             name = name?.takeIf { it.isNotEmpty() } ?: "$host:$port",
             protocolName = protocolName, address = host, port = port, shareLink = line,
+            outboundJson = outbound.toString(), core = CoreKind.singbox,
+        )
+    }
+
+
+    /**
+     * `dnstt://?domain=t.example.com&publicKey=<hex>&resolver=8.8.8.8:53&resolver=1.1.1.1:53#name`,
+     * the shape Hiddify hands out. Resolvers repeat; a comma-separated list is taken too.
+     */
+    @Throws(XrayCoreException::class)
+    private fun parseDnstt(uri: Uri, line: String): ServerProfile {
+        fun value(vararg names: String): String? = names.firstNotNullOfOrNull { name ->
+            uri.queryParameterNames.firstOrNull { it.equals(name, ignoreCase = true) }
+                ?.let { uri.getQueryParameter(it) }?.takeIf { it.isNotEmpty() }
+        }
+        val domain = value("domain") ?: throw XrayCoreException("dnstt link has no domain")
+        val publicKey = value("publicKey", "pubkey", "public_key")
+            ?: throw XrayCoreException("dnstt link has no public key")
+        val resolvers = uri.queryParameterNames
+            .filter { it.equals("resolver", ignoreCase = true) || it.equals("resolvers", ignoreCase = true) }
+            .flatMap { uri.getQueryParameters(it) }
+            .flatMap { it.split(",") }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        if (resolvers.isEmpty()) throw XrayCoreException("dnstt link has no resolver")
+
+        val outbound = JSONObject()
+            .put("type", "dnstt")
+            .put("domain", domain)
+            .put("pubkey", publicKey)
+            .put("resolvers", JSONArray(resolvers))
+        value("tunnel_per_resolver", "tunnel-per-resolver")?.toIntOrNull()?.let { outbound.put("tunnel-per-resolver", it) }
+        value("record-type", "record_type")?.let { outbound.put("record-type", it) }
+        value("upstream")?.let { outbound.put("upstream", it) }
+        if ((value("dnstt-compat", "dnstt_compat") ?: "").lowercase() in listOf("1", "true")) {
+            outbound.put("dnstt-compat", true)
+        }
+        val name = uri.fragment?.let { decode(it)?.trim() }?.takeIf { it.isNotEmpty() } ?: domain
+        return ServerProfile(
+            name = name, protocolName = "dnstt", address = domain, port = 53, shareLink = line,
             outboundJson = outbound.toString(), core = CoreKind.singbox,
         )
     }
