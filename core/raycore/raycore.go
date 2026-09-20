@@ -52,6 +52,7 @@ func newContext() context.Context {
 	// outbound registry rather than shipped by a forked core.
 	outbounds := include.OutboundRegistry()
 	registerDnstt(outbounds)
+	registerGuardedDirect(outbounds)
 	ctx = box.Context(ctx, include.InboundRegistry(), outbounds, include.EndpointRegistry(), include.DNSTransportRegistry(), include.ServiceRegistry(), include.CertificateProviderRegistry())
 	return ctx
 }
