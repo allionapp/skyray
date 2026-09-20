@@ -205,7 +205,9 @@ func SingboxPing(outboundJSON string, url string, timeoutMs int) (int64, error) 
 // SingboxSupports reports whether an outbound type is available in this build.
 func SingboxSupports(outboundType string) bool {
 	switch strings.ToLower(outboundType) {
-	case "ssh", "tuic", "hysteria2", "hysteria", "vless", "vmess", "trojan", "shadowsocks", "socks", "http", "wireguard", "anytls", "shadowtls":
+	// WireGuard and naive need build tags this AAR/xcframework does not set,
+	// so they belong to Xray-core here, not to sing-box.
+	case "ssh", "tuic", "hysteria2", "hysteria", "vless", "vmess", "trojan", "shadowsocks", "socks", "http", "anytls", "shadowtls":
 		return true
 	}
 	return false

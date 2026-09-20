@@ -7,7 +7,8 @@ with a Network Extension packet tunnel.
 
 ## Features
 
-- Import servers from `vmess://`, `vless://`, `trojan://`, `ss://`, `socks://`, `hysteria2://` links,
+- Import servers from `vmess://`, `vless://`, `trojan://`, `ss://`, `socks://`, `hysteria2://`,
+  `hysteria://`, `anytls://`, `tuic://`, `ssh://` links,
   raw Xray JSON, subscription URLs (plain or base64), or QR codes.
 - System-wide VPN mode (NEPacketTunnelProvider + hev-socks5-tunnel -> Xray SOCKS5 inbound).
 - Real latency test through each server (`pingBatch` from libXray).
@@ -86,7 +87,7 @@ data files are intentionally not loaded there.
 
 | Feature | SkyRay |
 | --- | --- |
-| Protocols | VLESS (Reality, Vision, XHTTP, WS, gRPC, httpupgrade, mKCP), VMess, Trojan, Shadowsocks, SOCKS, Hysteria2, WireGuard (Xray-core); SSH and TUIC (sing-box, same framework) |
+| Protocols | VLESS (Reality, Vision, XHTTP, WS, gRPC, httpupgrade, mKCP), VMess, Trojan, Shadowsocks, SOCKS, Hysteria2, WireGuard (Xray-core); SSH, TUIC, AnyTLS and Hysteria v1 (sing-box, same framework); WARP via Aether |
 | Import | share links, subscription URLs (plain / base64 / Clash YAML / Xray JSON), QR, launcher deep links (hiddify://, v2box://, clash://, sing-box://, streisand://, happ://, sub://), `skyray://` scheme |
 | Subscription headers | subscription-userinfo (quota/expiry), profile-title, profile-update-interval, profile-web-page-url, support-url, announce |
 | Subscriptions | auto-update interval, keep latencies/selection on refresh, per-subscription quota, provider website/support buttons |
