@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Settings in the Modernist theme: one column, uppercase section kickers on
-/// strong rules, square toggles, mono values. Presented as a sheet from Home.
-struct SettingsView: View {
+/// The full settings, in the Modernist theme: one column, uppercase section kickers on strong
+/// rules, square toggles, mono values. Reached from Settings once expert mode is on (seven taps
+/// on the version in About), as the Android build keeps its full v2rayNG screens.
+struct FullSettingsView: View {
     @EnvironmentObject private var profiles: ProfilesViewModel
     @EnvironmentObject private var vpn: VPNManager
     @Environment(\.dismiss) private var dismiss

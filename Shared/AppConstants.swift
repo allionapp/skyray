@@ -26,6 +26,8 @@ enum AppConstants {
     static let privacyPolicyURL = "https://allionapp.github.io/skyray-site/privacy.html"
     static let supportURL = "https://allionapp.github.io/skyray-site/support.html"
     static let termsURL = "https://allionapp.github.io/skyray-site/terms.html"
+    /// Support, as in the Android build, when a subscription names no support address of its own.
+    static let supportBotURL = "https://t.me/Ethaconfigbot?start=app_support"
 
     /// Cloudflare's trace answers with the exit IP and country in two plain
     /// lines, so one request measures the delay and names the exit at once.

@@ -36,8 +36,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.allion.skyray
         PRODUCT_NAME: SkyRay
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        MARKETING_VERSION: "1.0.1"
-        CURRENT_PROJECT_VERSION: "10"
+        MARKETING_VERSION: "1.1.5"
+        CURRENT_PROJECT_VERSION: "12"
     dependencies:
       - target: PacketTunnel
         embed: true
@@ -69,6 +69,9 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.allion.skyray
             CFBundleURLSchemes: [skyray]
+          # The subscription bot's install links (ethavpn://install-sub?url=…), shared with Android.
+          - CFBundleURLName: com.allion.skyray.install
+            CFBundleURLSchemes: [ethavpn]
         CFBundleDevelopmentRegion: en
     entitlements:
       path: App/SkyRay.entitlements
@@ -108,8 +111,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.allion.skyray.PacketTunnel
         PRODUCT_NAME: PacketTunnel
-        MARKETING_VERSION: "1.0.1"
-        CURRENT_PROJECT_VERSION: "10"
+        MARKETING_VERSION: "1.1.5"
+        CURRENT_PROJECT_VERSION: "12"
 schemes:
   SkyRay:
     build:

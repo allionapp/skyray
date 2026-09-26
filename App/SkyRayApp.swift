@@ -38,6 +38,17 @@ struct SkyRayApp: App {
     @MainActor
     private func handleOpenURL(_ url: URL) async {
         let text = url.absoluteString
+        // The bot's links: ethavpn://install-sub?url=<subscription> and install-config?url=<server link>.
+        if url.scheme?.lowercased() == "ethavpn" {
+            guard let link = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+                .first(where: { $0.name == "url" })?.value, !link.isEmpty else { return }
+            if url.host?.lowercased() == "install-config" || ShareLinkParser.containsShareLink(link) {
+                _ = await profiles.importText(link)
+            } else {
+                await profiles.importSubscription(link)
+            }
+            return
+        }
         if url.scheme?.lowercased() == "skyray" {
             switch url.host?.lowercased() {
             case "connect":
