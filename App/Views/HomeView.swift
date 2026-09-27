@@ -9,6 +9,7 @@ struct HomeView: View {
     @EnvironmentObject private var profiles: ProfilesViewModel
     @State private var showSettings = false
     @State private var showScanner = false
+    @State private var showAddLink = false
     /// Automatic mode tests every server before connecting; that wait needs its own label.
     @State private var findingFastest = false
     @State private var toast: String?
@@ -46,6 +47,11 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
         .sheet(isPresented: $showScanner) { scanner }
+        .confirmationDialog(Text("+ Add another link"), isPresented: $showAddLink, titleVisibility: .visible) {
+            Button(String(localized: "Paste link")) { pasteLink() }
+            Button(String(localized: "Scan QR code")) { showScanner = true }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        }
         .task(id: vpn.isConnected) { await watchLine() }
         .onAppear {
             switch DemoRouter.screen {
@@ -277,6 +283,11 @@ struct HomeView: View {
                 .foregroundColor(Etha.brand)
                 .frame(maxWidth: .infinity)
                 .disabled(profiles.isImporting)
+                // A second (third…) link: its servers join the list, and Auto picks among them all.
+                Button { showAddLink = true } label: { Text("+ Add another link").font(.system(size: 17, weight: .medium)) }
+                    .foregroundColor(Etha.brand)
+                    .frame(maxWidth: .infinity)
+                    .disabled(profiles.isImporting)
             }
         }
     }
