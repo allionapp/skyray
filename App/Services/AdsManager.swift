@@ -19,6 +19,18 @@ final class AdsManager: NSObject, ObservableObject {
     /// Cooldown so a flaky connection that drops and reconnects repeatedly
     /// doesn't show an ad every time.
     private let minInterval: TimeInterval = 20 * 60
+    /// How long after a connect an ad that arrives late is still shown.
+    private let showWindow: TimeInterval = 60
+
+    /// Set by VPNManager: whether the tunnel is up and so carries this app's requests. No ad
+    /// request leaves without it, so none goes to Google from the real network.
+    var tunnelUp = false {
+        didSet { if !tunnelUp { pendingShowUntil = nil; pendingSkipHandler = nil } }
+    }
+
+    /// A connect still waiting for its ad: shown when it arrives, within `showWindow`.
+    private var pendingShowUntil: Date?
+    private var pendingSkipHandler: (() -> Void)?
 
     private override init() { super.init() }
 
@@ -54,13 +66,24 @@ final class AdsManager: NSObject, ObservableObject {
     }
 
     private func loadAd() {
-        guard !isLoadingAd, rewardedInterstitial == nil else { return }
+        guard tunnelUp, !isLoadingAd, rewardedInterstitial == nil else { return }
         isLoadingAd = true
         GADRewardedInterstitialAd.load(withAdUnitID: AdsConfig.rewardedInterstitialUnitID, request: GADRequest()) { [weak self] ad, _ in
-            self?.isLoadingAd = false
-            self?.rewardedInterstitial = ad
+            guard let self else { return }
+            self.isLoadingAd = false
+            self.rewardedInterstitial = ad
             ad?.fullScreenContentDelegate = self
+            self.showPending()
         }
+    }
+
+    /// The ad the first connect was waiting for has arrived: shown if it is still in time.
+    private func showPending() {
+        guard let until = pendingShowUntil, let handler = pendingSkipHandler else { return }
+        pendingShowUntil = nil
+        pendingSkipHandler = nil
+        guard tunnelUp, Date() < until, UIApplication.shared.applicationState == .active else { return }
+        showAfterConnect(onAdSkipped: handler)
     }
 
     /// Shows the ad if one is ready and the cooldown has elapsed; always safe
@@ -82,6 +105,10 @@ final class AdsManager: NSObject, ObservableObject {
         guard didStart else { return }
         if let last = lastShown, Date().timeIntervalSince(last) < minInterval { return }
         guard let ad = rewardedInterstitial, let root = UIApplication.topMostViewController() else {
+            // The SDK starts only now, over the tunnel, so the first ad is usually still on its
+            // way: show it when it arrives.
+            pendingShowUntil = Date().addingTimeInterval(showWindow)
+            pendingSkipHandler = onAdSkipped
             loadAd()
             return
         }
@@ -131,15 +158,19 @@ extension AdsManager: GADFullScreenContentDelegate {
         isAdOnScreen = false
         stopWatchingBackground()
         rewardedInterstitial = nil
-        loadAd()
         // The reward can arrive just after the dismissal rather than before it,
         // and judging an ad skipped in that gap would drop a tunnel the user
-        // had in fact paid for with their attention.
+        // had in fact paid for with their attention. The next ad is fetched only
+        // for a connection that goes on, while it still carries the request.
         let handler = skipHandler
         skipHandler = nil
         ProfileStore.shared.appendTunnelLine("[ads] dismissed, reward=\(earnedReward)")
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-            guard let self, !self.earnedReward else { return }
+            guard let self else { return }
+            if self.earnedReward {
+                self.loadAd()
+                return
+            }
             ProfileStore.shared.appendTunnelLine("[ads] no reward after the grace period; the tunnel goes down")
             handler?()
         }

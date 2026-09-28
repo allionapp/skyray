@@ -169,6 +169,7 @@ final class VPNManager: ObservableObject {
                 // resolves it, refined in fetchExitInfo), then start the SDK now
                 // — over the tunnel — rather than at launch on the real network.
                 AdSignalOverride.apply(country: exitInfo?.country)
+                AdsManager.shared.tunnelUp = true
                 AdsManager.shared.start()
                 AdsManager.shared.showAfterConnect { [weak self] in
                     // The ad was closed early: the free connection ends with it.
@@ -181,6 +182,7 @@ final class VPNManager: ObservableObject {
             // Put the device's real locale/time zone back the moment the tunnel
             // is no longer carrying the traffic. No-op if never applied.
             AdSignalOverride.restore()
+            AdsManager.shared.tunnelUp = false
             connectedSince = nil
             exitTask?.cancel()
             exitTask = nil
