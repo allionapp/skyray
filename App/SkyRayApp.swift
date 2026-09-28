@@ -77,12 +77,19 @@ struct SkyRayApp: App {
 
     @MainActor
     private func onLaunch() async {
+        // Undo any ad-signal override a previous run was killed with, before the
+        // UI settles on a language. See AdSignalOverride.
+        AdSignalOverride.clearStaleOverrideAtLaunch()
         if UserDefaults.standard.bool(forKey: "DemoMode") {
             profiles.loadDemoData()
             vpn.enableDemo()
             return
         }
-        AdsManager.shared.start()
+        // Ads deliberately do NOT start at launch any more: the SDK's init,
+        // UMP consent and first ad request would leave on the real network,
+        // before any tunnel, carrying the user's real location. They are started
+        // over the tunnel on connect (VPNManager.apply), so AdMob sees the exit
+        // node. See AdsManager and AdSignalOverride.
         await handleLaunchArguments()
         if vpn.settings.pingOnOpen { Task { await profiles.pingAll() } }
         if vpn.settings.autoConnectOnLaunch, !vpn.isConnected, !UserDefaults.standard.bool(forKey: "AutoDisconnect") {

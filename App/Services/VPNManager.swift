@@ -164,6 +164,12 @@ final class VPNManager: ObservableObject {
             startStatsTimer()
             if isFreshConnect {
                 fetchExitInfo()
+                // Make the ad SDK report the exit node, not the real device: set
+                // the locale/time zone to the exit's (neutral until the probe
+                // resolves it, refined in fetchExitInfo), then start the SDK now
+                // — over the tunnel — rather than at launch on the real network.
+                AdSignalOverride.apply(country: exitInfo?.country)
+                AdsManager.shared.start()
                 AdsManager.shared.showAfterConnect { [weak self] in
                     // The ad was closed early: the free connection ends with it.
                     self?.debugNote = "ad closed before the reward; disconnecting"
@@ -172,6 +178,9 @@ final class VPNManager: ObservableObject {
                 }
             }
         } else {
+            // Put the device's real locale/time zone back the moment the tunnel
+            // is no longer carrying the traffic. No-op if never applied.
+            AdSignalOverride.restore()
             connectedSince = nil
             exitTask?.cancel()
             exitTask = nil
@@ -210,7 +219,13 @@ final class VPNManager: ObservableObject {
                         if parts[0] == "loc" { country = String(parts[1]) }
                     }
                     if let ip {
-                        await MainActor.run { self?.exitInfo = (ip, country) }
+                        await MainActor.run {
+                            self?.exitInfo = (ip, country)
+                            // Refine the ad-signal override to the exact exit
+                            // country, but only while still connected — the probe
+                            // can resolve just after a disconnect.
+                            if self?.status == .connected { AdSignalOverride.apply(country: country) }
+                        }
                         return
                     }
                 }
