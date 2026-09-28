@@ -41,6 +41,15 @@ class SkyRayVpnService : VpnService() {
         /** True while the post-connect ad is on screen and unfinished. */
         @Volatile var awaitingAdReward = false
 
+        /**
+         * True when the app's own traffic rides the tunnel (xray, where the core
+         * protects its sockets, so the app is not excluded from the VPN). It says
+         * whether the ad request leaves from the exit node — and so whether the
+         * ad-signal locale override should be applied. False for singbox/WARP,
+         * where the app stays excluded and its ad traffic uses the real network.
+         */
+        @Volatile var adsUseTunnel = false
+
         const val CHANNEL_ID = "skyray_vpn"
         const val NOTIF_ID = 1
         const val TUNNEL_IPV4 = "198.18.0.1"
@@ -140,10 +149,19 @@ class SkyRayVpnService : VpnService() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 builder.setMetered(false)
             }
-            // Exclude our own app from the tunnel: not strictly required since we
-            // protect() the core's own sockets, but avoids self-loops from any
-            // stray connection (e.g. the in-app latency test).
-            runCatching { builder.addDisallowedApplication(packageName) }
+            // Whether the app's own traffic should ride the tunnel. For xray the
+            // core protects its own sockets (registerDialerController), so the app
+            // need not be excluded — and not excluding it makes the app's own ad
+            // request leave from the exit node, which is the point. For singbox/
+            // WARP, whose socket protection is not confirmed here, keep excluding
+            // the app so the core can always dial out.
+            val adsTunnel = core == CoreKind.xray
+            adsUseTunnel = adsTunnel
+            if (!adsTunnel) {
+                // Also avoids self-loops from any stray connection (e.g. the
+                // in-app latency test).
+                runCatching { builder.addDisallowedApplication(packageName) }
+            }
 
             val pfd = builder.establish() ?: throw IllegalStateException("VpnService.Builder.establish() returned null")
             tunFd = pfd

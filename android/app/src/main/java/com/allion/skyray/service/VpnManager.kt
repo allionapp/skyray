@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.VpnService
 import androidx.activity.result.ActivityResultLauncher
 import com.allion.skyray.R
+import com.allion.skyray.core.AdSignalOverride
 import com.allion.skyray.core.AdsManager
 import com.allion.skyray.data.AppConstants
 import com.allion.skyray.data.AppSettings
@@ -102,10 +103,23 @@ class VpnManager(private val context: Context) {
                 if (!running && wasRunning) {
                     exitJob?.cancel()
                     _exitInfo.value = null
+                    // Put the device's real locale/time zone back once the tunnel
+                    // is no longer carrying the traffic. No-op if never applied.
+                    AdSignalOverride.restore()
                 }
                 if (running && !wasRunning) {
                     fetchExitInfo(SkyRayVpnService.activeSocksPort)
+                    // On an xray connection the app's traffic rides the tunnel, so
+                    // the ad request leaves from the exit node: match the locale to
+                    // it (neutral until the probe resolves the country, refined in
+                    // fetchExitInfo), never the device's fa/Tehran.
+                    if (SkyRayVpnService.adsUseTunnel) {
+                        AdSignalOverride.apply(_exitInfo.value?.country)
+                    }
                     (context as? Activity)?.let { activity ->
+                        // Start the ads SDK now — over the tunnel — rather than at
+                        // launch on the real network.
+                        AdsManager.start(activity)
                         AdsManager.showAfterConnect(activity) {
                             // The ad was closed early: the free connection ends with it.
                             store.appendTunnelLog("[ad] closed before the reward; disconnecting")
@@ -147,6 +161,9 @@ class VpnManager(private val context: Context) {
                 }.getOrNull()
                 if (found != null) {
                     _exitInfo.value = found
+                    // Refine the ad-signal override to the exact exit country now
+                    // that the probe resolved it (only when the app tunnels).
+                    if (SkyRayVpnService.adsUseTunnel) AdSignalOverride.apply(found.country)
                     return@launch
                 }
                 kotlinx.coroutines.delay((1 + attempt) * 1000L)

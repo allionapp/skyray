@@ -45,11 +45,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         vpnManager = VpnManager(this)
         val store = ProfileStore.get(this)
-        // Deferred past the first frame: starting the ads SDK (it preloads a
-        // video surface for the rewarded creative) while the window is still
-        // being set up can leave that surface painted over the whole
-        // Activity as a black layer on some devices/emulators.
-        window.decorView.post { AdsManager.start(this) }
+        // Ads deliberately do NOT start at launch any more: the SDK's init, UMP
+        // consent and first ad request would leave on the real network before any
+        // tunnel, carrying the user's real location. They are started over the
+        // tunnel on connect (VpnManager), so on an xray connection AdMob sees the
+        // exit node instead of the real device.
         requestNotificationPermissionIfNeeded()
 
         setContent {
