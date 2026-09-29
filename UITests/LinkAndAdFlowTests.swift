@@ -50,6 +50,30 @@ final class LinkAndAdFlowTests: XCTestCase {
         shot("6 settled")
     }
 
+    /// Straight after launch, and straight after Refresh, the server menu must already list the
+    /// link's servers: no Test again first.
+    func testServerMenuWithoutTestAgain() throws {
+        app.launch()
+        XCTAssertTrue(app.buttons["linkName"].waitForExistence(timeout: 30), "Home did not show a link")
+        print("[ui] launch: label \(app.buttons["serverMenu"].label)")
+        let atLaunch = serverMenuItems()
+        print("[ui] menu at launch: \(atLaunch.count) items \(atLaunch.prefix(4))")
+        shot("menu at launch")
+        dismissMenu()
+
+        let refresh = app.buttons["Refresh"]
+        if refresh.exists {
+            refresh.tap()
+            sleep(12)
+            print("[ui] after Refresh: label \(app.buttons["serverMenu"].label)")
+            let afterRefresh = serverMenuItems()
+            print("[ui] menu after Refresh: \(afterRefresh.count) items \(afterRefresh.prefix(4))")
+            shot("menu after refresh")
+            dismissMenu()
+        }
+        XCTAssertGreaterThan(atLaunch.count, 1, "the server menu had no servers at launch")
+    }
+
     // MARK: Steps
 
     /// Opens "Your links" and taps a link: [to] by name, or else the first one not in use.

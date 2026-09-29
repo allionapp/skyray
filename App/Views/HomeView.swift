@@ -316,6 +316,14 @@ struct HomeView: View {
                     .foregroundColor(Etha.brand)
                     .frame(maxWidth: .infinity)
                     .disabled(profiles.isImporting)
+                // Also in "Your links"; here in plain sight.
+                if account != nil {
+                    Button { confirmRemoveLink = true } label: { Text("Remove this link").font(.system(size: 17, weight: .medium)) }
+                        .foregroundColor(.red)
+                        .frame(maxWidth: .infinity)
+                        .disabled(profiles.isImporting)
+                        .accessibilityIdentifier("removeLink")
+                }
             }
         }
     }
