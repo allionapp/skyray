@@ -43,7 +43,9 @@ final class VPNManager: ObservableObject {
 
     func enableDemo() {
         isDemo = true
-        status = .connected
+        // A connecting-screen picture wants the state underneath it to be "not connected yet".
+        status = DemoRouter.screen == "connecting" ? .connecting : .connected
+        exitInfo = ("203.0.113.24", "DE")   // a documentation address: never a real one
         connectedSince = Date().addingTimeInterval(-47 * 60)
         stats = TunnelStats(txBytes: 184_320_000, rxBytes: 1_402_000_000, xrayRunning: true, memoryBytes: 18 * 1024 * 1024)
         uploadSpeed = 1_250_000

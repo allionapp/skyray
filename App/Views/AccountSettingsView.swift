@@ -33,6 +33,10 @@ struct SettingsView: View {
                             rowLabel("About", detail: versionText)
                         }
                         row("Privacy policy", detail: nil) { open(AppConstants.privacyPolicyURL) }
+                        if AdsManager.shared.privacyChoicesRequired || UserDefaults.standard.bool(forKey: "DemoMode") {
+                            // Google's consent can be changed here any time (asked for by its EU rules).
+                            row("Privacy choices", detail: String(localized: "Change what you agreed to for ads")) { privacyChoices() }
+                        }
                         row("Delete account", detail: String(localized: "Removes your subscription and all its data from this phone"),
                             destructive: true) { confirmDelete = true }
                         if expertMode {
@@ -115,6 +119,21 @@ struct SettingsView: View {
     /// iOS keeps each app's language in its own Settings page.
     private func openAppSettings() {
         if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+    }
+
+    /// Google's form runs over the tunnel only, so it needs a connection.
+    private func privacyChoices() {
+        guard vpn.isConnected, let root = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene }).flatMap({ $0.windows })
+            .first(where: { $0.isKeyWindow })?.rootViewController else {
+            show(String(localized: "Connect first, then open Privacy choices."))
+            return
+        }
+        var top = root
+        while let presented = top.presentedViewController { top = presented }
+        AdsManager.shared.showPrivacyChoices(from: top) { shown in
+            if !shown { show(String(localized: "Connect first, then open Privacy choices.")) }
+        }
     }
 
     private func open(_ string: String) {

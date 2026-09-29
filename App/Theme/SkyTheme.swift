@@ -381,5 +381,5 @@ struct ScreenHeader: View {
 /// opens a screen directly so App Store screenshots can be captured without taps.
 enum DemoRouter {
     static var screen: String? { UserDefaults.standard.bool(forKey: "DemoMode") ? UserDefaults.standard.string(forKey: "DemoScreen") : nil }
-    static let sampleLink = "vless://8f3c1a2e-77b4-4d19-9c02-5aa1e6b3f0d7@de1.skyray.app:443?encryption=none&security=reality&sni=www.apple.com&fp=chrome&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc&sid=6ba85179e30d4fc2&type=tcp&flow=xtls-rprx-vision#Frankfurt%20%C2%B7%20Reality"
+    static let sampleLink = "vless://8f3c1a2e-77b4-4d19-9c02-5aa1e6b3f0d7@de1.example.net:443?encryption=none&security=reality&sni=www.apple.com&fp=chrome&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5KZwwB-ed4eEE7YnRc&sid=6ba85179e30d4fc2&type=tcp&flow=xtls-rprx-vision#Frankfurt%20%C2%B7%20Reality"
 }

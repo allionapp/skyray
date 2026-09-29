@@ -91,6 +91,13 @@ struct HomeView: View {
             takePendingLink()
             switch DemoRouter.screen {
             case "settings": showSettings = true
+            case "links": after { showLinks = true }
+            case "add": after { showAddLink = true }
+            case "connecting":
+                // The connecting screen, held at a fixed point for the picture.
+                progress = 64
+                progressCap = 64
+                preparing = true
             default: break
             }
         }
@@ -513,7 +520,7 @@ struct HomeView: View {
     }
 
     private func runProgress() async {
-        guard preparing else { return }
+        guard preparing, DemoRouter.screen != "connecting" else { return }
         var elapsed = 0.0
         while preparing, !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 100_000_000)

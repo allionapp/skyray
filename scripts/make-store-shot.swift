@@ -75,7 +75,7 @@ var shotH = min(W * 0.76 * ratio, available / 0.96)
 var shotW = shotH / ratio
 if shotW > W * 0.78 { shotW = W * 0.78; shotH = shotW * ratio }
 let shotRect = CGRect(x: (W - shotW) / 2, y: -shotH * 0.04, width: shotW, height: shotH)
-let corner = shotW * 0.11
+let corner = min(shotW * 0.11, shotRect.height * 0.045)   // a wide iPad frame must not clip the status bar
 ctx.saveGState()
 ctx.setShadow(offset: CGSize(width: 0, height: -30 * scale), blur: 90 * scale, color: rgb(0x000000, 0.45))
 ctx.setFillColor(rgb(0x000000, 0.001))

@@ -266,6 +266,27 @@ final class AdsManager: NSObject, ObservableObject {
         giveUpPending()
     }
 
+    /// Whether Google asks for a way to change consent later (Settings shows "Privacy choices").
+    /// Known after the first consent lookup of the run; false before it.
+    var privacyChoicesRequired: Bool {
+        UMPConsentInformation.sharedInstance.privacyOptionsRequirementStatus == .required
+    }
+
+    /// Settings' "Privacy choices": Google's form to change consent. Over the tunnel only, like
+    /// everything of Google's; reports false when it could not be shown (not connected).
+    func showPrivacyChoices(from root: UIViewController, done: @escaping (Bool) -> Void) {
+        guard tunnelUp else { return done(false) }
+        presentingRoot = root
+        consentFormShowing = true
+        UMPConsentForm.presentPrivacyOptionsForm(from: root) { [weak self] error in
+            Task { @MainActor in
+                self?.consentFormShowing = false
+                if let error { ProfileStore.shared.appendTunnelLine("[ads] privacy choices failed: \(error.localizedDescription)") }
+                done(error == nil)
+            }
+        }
+    }
+
     private func clearPending() {
         pendingShowUntil = nil
         pendingSkipHandler = nil

@@ -553,25 +553,39 @@ final class ProfilesViewModel: ObservableObject {
             var p = ServerProfile(name: name, protocolName: proto, address: host, port: port, outboundJSON: "{}", core: core)
             p.latencyMs = ms
             p.shareLink = "\(proto == "shadowsocks" ? "ss" : proto)://demo-user@\(host):\(port)?security=reality&sni=\(host)&fp=chrome#\(name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name)"
-            p.subscriptionURL = "https://demo.skyray.app/sub"
+            p.subscriptionURL = "https://demo.example.net/sub"
             return p
         }
         profiles = [
-            make("Frankfurt · Reality", "vless", "de1.skyray.app", 443, 84),
-            make("Amsterdam · XHTTP", "vless", "nl1.skyray.app", 8443, 96),
-            make("Helsinki · WebSocket", "vmess", "fi1.skyray.app", 443, 121),
-            make("London · Trojan", "trojan", "uk1.skyray.app", 443, 133),
-            make("Paris · Hysteria2", "hysteria2", "fr1.skyray.app", 443, 148),
-            make("Warsaw · Shadowsocks", "shadowsocks", "pl1.skyray.app", 8388, 162),
-            make("Zurich · TUIC", "tuic", "ch1.skyray.app", 443, 171, core: .singbox),
-            make("Stockholm · SSH", "ssh", "se1.skyray.app", 22, 204, core: .singbox),
-            make("New York · Reality", "vless", "us1.skyray.app", 443, 236),
-            make("Tokyo · WebSocket", "vless", "jp1.skyray.app", 443, 318),
+            make("Frankfurt · Reality", "vless", "de1.example.net", 443, 84),
+            make("Amsterdam · XHTTP", "vless", "nl1.example.net", 8443, 96),
+            make("Helsinki · WebSocket", "vmess", "fi1.example.net", 443, 121),
+            make("London · Trojan", "trojan", "uk1.example.net", 443, 133),
+            make("Paris · Hysteria2", "hysteria2", "fr1.example.net", 443, 148),
+            make("Warsaw · Shadowsocks", "shadowsocks", "pl1.example.net", 8388, 162),
+            make("Zurich · TUIC", "tuic", "ch1.example.net", 443, 171, core: .singbox),
+            make("Stockholm · SSH", "ssh", "se1.example.net", 22, 204, core: .singbox),
+            make("New York · Reality", "vless", "us1.example.net", 443, 236),
+            make("Tokyo · WebSocket", "vless", "jp1.example.net", 443, 318),
         ]
         selectedId = profiles.first?.id
-        subscriptions = [SubscriptionInfo(url: "https://demo.skyray.app/sub", title: "SkyRay Premium",
+        isAutomatic = true   // "Auto", as most users run it
+        subscriptions = [SubscriptionInfo(url: "https://demo.example.net/sub", title: "Home",
                                           upload: 6_400_000_000, download: 58_900_000_000, total: 200_000_000_000,
                                           expire: Date().addingTimeInterval(23 * 24 * 3600), lastUpdated: Date(),
-                                          updateIntervalHours: 12, webPageURL: "https://skyray.app", supportURL: "https://t.me/skyray")]
+                                          updateIntervalHours: 12, webPageURL: nil, supportURL: nil),
+                         SubscriptionInfo(url: "https://demo.example.net/family", title: "Family",
+                                          upload: 900_000_000, download: 12_300_000_000, total: 0,
+                                          expire: Date().addingTimeInterval(61 * 24 * 3600), lastUpdated: Date(),
+                                          updateIntervalHours: 12, webPageURL: nil, supportURL: nil),
+                         SubscriptionInfo(url: "https://demo.example.net/travel", title: "Travel",
+                                          upload: 200_000_000, download: 3_100_000_000, total: 50_000_000_000,
+                                          expire: Date().addingTimeInterval(9 * 24 * 3600), lastUpdated: Date(),
+                                          updateIntervalHours: 12, webPageURL: nil, supportURL: nil)]
+        if DemoRouter.screen == "empty" {
+            profiles = []
+            subscriptions = []
+            selectedId = nil
+        }
     }
 }

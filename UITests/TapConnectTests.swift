@@ -101,4 +101,41 @@ final class TapConnectTests: XCTestCase {
             print("[ui] button id=\(b.identifier) label=\(b.label) frame=\(b.frame)")
         }
     }
+
+    /// With a consent message set up in AdMob and a European exit, Google's consent form comes
+    /// first; after "Consent" the ad follows.
+    func testConsentFormThenAd() throws {
+        app.launch()
+        let connect = app.buttons["connect"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 30), "no Connect button")
+        if app.staticTexts["Connected"].exists {
+            connect.tap()
+            _ = app.staticTexts["Not connected"].waitForExistence(timeout: 20)
+            sleep(2)
+        }
+        connect.tap()
+        let consent = app.buttons["Consent"]
+        let formShown = consent.waitForExistence(timeout: 40)
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = formShown ? "consent form" : "no consent form"
+        shot.lifetime = .keepAlways
+        add(shot)
+        print("[ui] consent form shown: \(formShown)")
+        if formShown {
+            consent.tap()
+            // The tracking prompt, if it comes, is answered by the system alert handler below.
+            addUIInterruptionMonitor(withDescription: "tracking") { alert in
+                for label in ["Ask App Not to Track", "Allow"] where alert.buttons[label].exists {
+                    alert.buttons[label].tap(); return true
+                }
+                return false
+            }
+            app.tap()
+        }
+        sleep(25)
+        let after = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        after.name = "25 s after"
+        after.lifetime = .keepAlways
+        add(after)
+    }
 }
