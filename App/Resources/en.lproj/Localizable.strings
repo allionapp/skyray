@@ -54,3 +54,9 @@
 "Close" = "Close";
 "Cancel" = "Cancel";
 "+ Add another link" = "+ Add another link";
+"Your links" = "Your links";
+"Remove this link" = "Remove this link";
+"%@ and its servers are removed from this phone. The link itself keeps working, so you can add it again any time." = "%@ and its servers are removed from this phone. The link itself keeps working, so you can add it again any time.";
+"Link removed" = "Link removed";
+"Using %@" = "Using %@";
+"Check for update" = "Check for update";

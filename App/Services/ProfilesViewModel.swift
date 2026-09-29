@@ -21,6 +21,15 @@ final class ProfilesViewModel: ObservableObject {
     @Published var isAutomatic: Bool {
         didSet { store.automaticSelection = isAutomatic }
     }
+    /// The link Home works with, when there are several (as on Android): its servers are the
+    /// ones listed, tested and picked from. nil = the first subscription.
+    @Published private(set) var activeLinkURL: String? {
+        didSet { UserDefaults.standard.set(activeLinkURL, forKey: Self.activeLinkKey) }
+    }
+    private static let activeLinkKey = "SkyRayActiveLink"
+    /// A link opened from outside (the bot's install link), for Home to add exactly as if it
+    /// had been pasted: it becomes the link in use and connects, as on Android.
+    @Published var pendingLink: String?
     private var lastPingAll: Date?
 
     private let store = ProfileStore.shared
@@ -28,6 +37,7 @@ final class ProfilesViewModel: ObservableObject {
 
     init() {
         isAutomatic = ProfileStore.shared.automaticSelection
+        activeLinkURL = UserDefaults.standard.string(forKey: Self.activeLinkKey)
         profiles = store.loadProfiles()
         subscriptions = store.loadSubscriptions()
         selectedId = store.selectedProfileId ?? profiles.first?.id
@@ -62,6 +72,46 @@ final class ProfilesViewModel: ObservableObject {
         select(profile)
     }
 
+    // MARK: - The link in use
+
+    /// The link Home shows: the one chosen, else the first subscription.
+    var activeLink: SubscriptionInfo? {
+        subscriptions.first { $0.url == activeLinkURL } ?? subscriptions.first
+    }
+
+    /// The servers Home lists, tests and picks from: the link in use, or every server when
+    /// there is no link (servers added by hand). WARP is never among them.
+    var linkServers: [ServerProfile] {
+        let all = profiles.filter { $0.core != .warp }
+        guard let url = activeLink?.url else { return all }
+        let own = all.filter { $0.subscriptionURL == url }
+        return own.isEmpty ? all : own
+    }
+
+    /// Home switches to this link; its best line is picked afresh.
+    func useLink(_ url: String) {
+        activeLinkURL = url
+        isAutomatic = true
+        lastPingAll = nil
+    }
+
+    /// What a link is called in the list: its title, else its host.
+    func label(of link: SubscriptionInfo) -> String {
+        if let title = link.title, !title.isEmpty { return title }
+        return URL(string: link.url)?.host ?? link.url
+    }
+
+    /// Every link's label; two links with the same name get a number, so they can be told apart.
+    var linkLabels: [String] {
+        let names = subscriptions.map { label(of: $0) }
+        var seen: [String: Int] = [:]
+        return names.map { name in
+            guard names.filter({ $0 == name }).count > 1 else { return name }
+            seen[name, default: 0] += 1
+            return "\(name) \(seen[name]!)"
+        }
+    }
+
     /// Latencies go stale as networks change; older than this they are retested.
     var latenciesAreFresh: Bool {
         lastPingAll.map { Date().timeIntervalSince($0) < 10 * 60 } ?? false
@@ -72,9 +122,16 @@ final class ProfilesViewModel: ObservableObject {
     func connectionTarget() async -> ServerProfile? {
         // WARP is a deliberate choice, not something automatic mode overrides.
         if selectedProfile?.core == .warp { return selectedProfile }
-        guard isAutomatic, profiles.filter({ $0.core != .warp }).count > 1 else { return selectedProfile }
-        if !latenciesAreFresh { await pingAll() }
-        return selectFastest() ?? selectedProfile
+        let scope = linkServers
+        let selectedInScope = scope.contains { $0.id == selectedId }
+        // A server chosen by hand stays, as long as it belongs to the link in use.
+        if !isAutomatic, selectedInScope { return selectedProfile }
+        guard scope.count > 1 else {
+            if let only = scope.first { select(only) }
+            return scope.first ?? selectedProfile
+        }
+        if !latenciesAreFresh { await pingAll(only: scope, markFresh: true) }
+        return selectFastest() ?? (selectedInScope ? selectedProfile : scope.first)
     }
 
     /// Servers grouped by the subscription they came from; hand-added ones last.
@@ -138,6 +195,7 @@ final class ProfilesViewModel: ObservableObject {
     func deleteAll() {
         profiles.removeAll()
         subscriptions.removeAll()
+        activeLinkURL = nil
         store.saveSubscriptions(subscriptions)
         fixSelectionAndPersist()
     }
@@ -325,6 +383,7 @@ final class ProfilesViewModel: ObservableObject {
         subscriptions.removeAll { $0.url == url }
         store.saveSubscriptions(subscriptions)
         profiles.removeAll { $0.subscriptionURL == url }
+        if activeLinkURL == url { activeLinkURL = nil; isAutomatic = true; lastPingAll = nil }
         fixSelectionAndPersist()
     }
 
@@ -334,7 +393,8 @@ final class ProfilesViewModel: ObservableObject {
     /// time, so hundreds of servers finish in reasonable time. Each probe
     /// records the delay and where the traffic comes out.
     /// `subset` limits the test to those servers, e.g. the ones a subscription just brought in.
-    func pingAll(only subset: [ServerProfile]? = nil) async {
+    /// `markFresh` counts a test of the link in use as the full test for "latencies are fresh".
+    func pingAll(only subset: [ServerProfile]? = nil, markFresh: Bool = false) async {
         // WARP has no outbound of its own, so neither core can test it.
         let snapshot = (subset ?? profiles).filter { $0.core != .warp }
         guard !isPinging, !snapshot.isEmpty else { return }
@@ -366,7 +426,7 @@ final class ProfilesViewModel: ObservableObject {
             }
         }
         await pingTask?.value
-        if subset == nil, pingTask?.isCancelled == false { lastPingAll = Date() }
+        if subset == nil || markFresh, pingTask?.isCancelled == false { lastPingAll = Date() }
         pingTask = nil
         isPinging = false
         persist()
@@ -407,7 +467,8 @@ final class ProfilesViewModel: ObservableObject {
 
     @discardableResult
     func selectFastest() -> ServerProfile? {
-        if let best = profiles.filter({ ($0.latencyMs ?? -1) > 0 }).min(by: { $0.latencyMs! < $1.latencyMs! }) {
+        // "Auto" is the fastest line of the link in use.
+        if let best = linkServers.filter({ ($0.latencyMs ?? -1) > 0 }).min(by: { $0.latencyMs! < $1.latencyMs! }) {
             select(best)
             return best
         }

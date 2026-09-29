@@ -366,3 +366,9 @@
 "Expert mode on: Advanced is now in Settings" = "حالت حرفه‌ای روشن شد: «پیشرفته» در تنظیمات آمد";
 "Expert mode off" = "حالت حرفه‌ای خاموش شد";
 "+ Add another link" = "+ افزودن لینک دیگر";
+"Your links" = "لینک‌های شما";
+"Remove this link" = "حذف این لینک";
+"%@ and its servers are removed from this phone. The link itself keeps working, so you can add it again any time." = "«%@» و سرورهایش از این گوشی حذف می‌شوند. خود لینک همچنان کار می‌کند و هر وقت خواستید می‌توانید دوباره اضافه‌اش کنید.";
+"Link removed" = "لینک حذف شد";
+"Using %@" = "استفاده از %@";
+"Check for update" = "بررسی به‌روزرسانی";

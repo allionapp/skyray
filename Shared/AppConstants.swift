@@ -24,6 +24,8 @@ enum AppConstants {
     static let automaticSelectionKey = "automaticSelection"
 
     static let privacyPolicyURL = "https://allionapp.github.io/skyray-site/privacy.html"
+    /// SkyRay on the App Store: Settings' "Check for update" opens it.
+    static let appStoreURL = "itms-apps://apps.apple.com/app/id6809038308"
     static let supportURL = "https://allionapp.github.io/skyray-site/support.html"
     static let termsURL = "https://allionapp.github.io/skyray-site/terms.html"
     /// Support, as in the Android build, when a subscription names no support address of its own.

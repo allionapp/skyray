@@ -42,11 +42,7 @@ struct SkyRayApp: App {
         if url.scheme?.lowercased() == "ethavpn" {
             guard let link = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
                 .first(where: { $0.name == "url" })?.value, !link.isEmpty else { return }
-            if url.host?.lowercased() == "install-config" || ShareLinkParser.containsShareLink(link) {
-                _ = await profiles.importText(link)
-            } else {
-                await profiles.importSubscription(link)
-            }
+            profiles.pendingLink = link   // Home adds it, as with Paste link
             return
         }
         if url.scheme?.lowercased() == "skyray" {
@@ -113,8 +109,12 @@ struct SkyRayApp: App {
             return
         }
         if let link = defaults.string(forKey: "ImportLink"), !link.isEmpty {
-            let added = await profiles.importText(link)
-            if added > 0, let last = profiles.profiles.last { profiles.select(last) }
+            if !ShareLinkParser.containsShareLink(link), SubscriptionLinkResolver.resolve(link) != nil {
+                profiles.pendingLink = link   // a subscription: Home adds it, as with Paste link
+            } else {
+                let added = await profiles.importText(link)
+                if added > 0, let last = profiles.profiles.last { profiles.select(last) }
+            }
         }
         // -AddWarp YES adds and selects the free WARP entry, so a device test
         // needs no link at all.

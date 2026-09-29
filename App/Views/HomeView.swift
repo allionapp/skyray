@@ -10,6 +10,8 @@ struct HomeView: View {
     @State private var showSettings = false
     @State private var showScanner = false
     @State private var showAddLink = false
+    @State private var showLinks = false
+    @State private var confirmRemoveLink = false
     /// Automatic mode tests every server before connecting; that wait needs its own label.
     @State private var findingFastest = false
     @State private var toast: String?
@@ -52,8 +54,25 @@ struct HomeView: View {
             Button(String(localized: "Scan QR code")) { showScanner = true }
             Button(String(localized: "Cancel"), role: .cancel) {}
         }
+        .confirmationDialog(Text("Your links"), isPresented: $showLinks, titleVisibility: .visible) {
+            ForEach(Array(zip(profiles.subscriptions, profiles.linkLabels)), id: \.0.url) { link, label in
+                Button((link.url == profiles.activeLink?.url ? "✓ " : "") + label) { switchLink(to: link.url) }
+            }
+            Button(String(localized: "+ Add another link")) { after { showAddLink = true } }
+            Button(String(localized: "Remove this link"), role: .destructive) { after { confirmRemoveLink = true } }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        }
+        .alert(String(localized: "Remove this link"), isPresented: $confirmRemoveLink) {
+            Button(String(localized: "Delete"), role: .destructive) { removeActiveLink() }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(String(format: String(localized: "%@ and its servers are removed from this phone. The link itself keeps working, so you can add it again any time."),
+                        profiles.activeLink.map { profiles.label(of: $0) } ?? ""))
+        }
         .task(id: vpn.isConnected) { await watchLine() }
+        .onChange(of: profiles.pendingLink) { _ in takePendingLink() }
         .onAppear {
+            takePendingLink()
             switch DemoRouter.screen {
             case "settings": showSettings = true
             default: break
@@ -163,8 +182,8 @@ struct HomeView: View {
 
     // MARK: Server choice
 
-    /// Everything but WARP competes in "Auto"; WARP is chosen by hand.
-    private var contenders: [ServerProfile] { profiles.profiles.filter { $0.core != .warp } }
+    /// The link in use competes in "Auto", as on Android; WARP is chosen by hand.
+    private var contenders: [ServerProfile] { profiles.linkServers }
 
     private var serverLabel: String {
         if profiles.isAutomatic {
@@ -181,14 +200,10 @@ struct HomeView: View {
                 Button { chooseAutomatic() } label: {
                     Label(String(localized: "Auto (fastest)"), systemImage: profiles.isAutomatic ? "checkmark" : "bolt")
                 }
-                ForEach(profiles.groups, id: \.title) { group in
-                    Section(group.title) {
-                        ForEach(group.servers) { p in
-                            Button { choose(p) } label: {
-                                let chosen = !profiles.isAutomatic && p.id == profiles.selectedId
-                                Label(menuTitle(p), systemImage: chosen ? "checkmark" : (p.flag == nil ? "server.rack" : "globe"))
-                            }
-                        }
+                ForEach(contenders) { p in
+                    Button { choose(p) } label: {
+                        let chosen = !profiles.isAutomatic && p.id == profiles.selectedId
+                        Label(menuTitle(p), systemImage: chosen ? "checkmark" : (p.flag == nil ? "server.rack" : "globe"))
                     }
                 }
             } label: {
@@ -227,7 +242,7 @@ struct HomeView: View {
     private func chooseAutomatic() {
         profiles.isAutomatic = true
         Task {
-            if !profiles.latenciesAreFresh { await profiles.pingAll() }
+            if !profiles.latenciesAreFresh { await profiles.pingAll(only: contenders, markFresh: true) }
             await moveToBestIfConnected()
         }
     }
@@ -238,7 +253,7 @@ struct HomeView: View {
     }
 
     private func testAgain() async {
-        await profiles.pingAll()
+        await profiles.pingAll(only: contenders, markFresh: true)
         // Auto means the best line of the latest test: re-pick, and move over if connected.
         if profiles.isAutomatic { await moveToBestIfConnected() }
     }
@@ -251,19 +266,23 @@ struct HomeView: View {
 
     // MARK: Account
 
-    /// The plan the chosen server belongs to, or the first one there is.
-    private var account: SubscriptionInfo? {
-        if let url = profiles.selectedProfile?.subscriptionURL, let sub = profiles.subscriptions.first(where: { $0.url == url }) {
-            return sub
-        }
-        return profiles.subscriptions.first
-    }
+    /// The link in use.
+    private var account: SubscriptionInfo? { profiles.activeLink }
 
     private var accountCard: some View {
         EthaCard {
             VStack(alignment: .leading, spacing: 16) {
-                Text(verbatim: account?.title ?? account.flatMap { URL(string: $0.url)?.host } ?? String(localized: "My servers"))
-                    .font(.system(size: 22, weight: .semibold)).foregroundColor(Etha.ink).lineLimit(1)
+                // With several links the name opens the list of them: switch, add, remove.
+                Button { if account != nil { showLinks = true } } label: {
+                    HStack(spacing: 6) {
+                        Text(verbatim: accountTitle)
+                            .font(.system(size: 22, weight: .semibold)).foregroundColor(Etha.ink).lineLimit(1)
+                        if profiles.subscriptions.count > 1 {
+                            Image(systemName: "chevron.down").font(.system(size: 15, weight: .semibold)).foregroundColor(Etha.muted)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
                 HStack(alignment: .top, spacing: 12) {
                     tile(value: daysValue, label: daysLabel)
                     tile(value: dataValue, label: dataLabel)
@@ -283,13 +302,61 @@ struct HomeView: View {
                 .foregroundColor(Etha.brand)
                 .frame(maxWidth: .infinity)
                 .disabled(profiles.isImporting)
-                // A second (third…) link: its servers join the list, and Auto picks among them all.
+                // A second (third…) link; it becomes the one in use, and the name above switches back.
                 Button { showAddLink = true } label: { Text("+ Add another link").font(.system(size: 17, weight: .medium)) }
                     .foregroundColor(Etha.brand)
                     .frame(maxWidth: .infinity)
                     .disabled(profiles.isImporting)
             }
         }
+    }
+
+    private var accountTitle: String {
+        guard let link = account, let i = profiles.subscriptions.firstIndex(of: link) else {
+            return String(localized: "My servers")
+        }
+        return profiles.linkLabels[i]
+    }
+
+    // MARK: Several links
+
+    /// A link opened from Telegram: added exactly as if it had been pasted.
+    private func takePendingLink() {
+        guard let link = profiles.pendingLink else { return }
+        profiles.pendingLink = nil
+        Task { await importLink(link) }
+    }
+
+    /// A dialog cannot open while another is closing; the next one waits a moment.
+    private func after(_ action: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: action)
+    }
+
+    /// Home moves to that link; while connected, the connection moves to its best line.
+    private func switchLink(to url: String) {
+        guard url != profiles.activeLink?.url else { return }
+        profiles.useLink(url)
+        if let link = profiles.activeLink { show(String(format: String(localized: "Using %@"), profiles.label(of: link))) }
+        moveToLinkIfConnected()
+    }
+
+    private func moveToLinkIfConnected() {
+        guard vpn.isConnected else { return }
+        let current = profiles.selectedId
+        Task {
+            findingFastest = true
+            let target = await profiles.connectionTarget()
+            findingFastest = false
+            if let target, target.id != current { await vpn.reconnect(profile: target) }
+        }
+    }
+
+    /// The link in use and its servers leave the phone; the others stay.
+    private func removeActiveLink() {
+        guard let link = profiles.activeLink else { return }
+        if vpn.isConnected, profiles.selectedProfile?.subscriptionURL == link.url { vpn.disconnect() }
+        profiles.removeSubscription(link.url)
+        show(String(localized: "Link removed"))
     }
 
     private func tile(value: String, label: String) -> some View {
@@ -388,6 +455,8 @@ struct HomeView: View {
     /// Adds the link — a subscription or server links — and connects, as the Android build does.
     private func importLink(_ text: String) async {
         let before = profiles.profiles.count
+        let linksBefore = Set(profiles.subscriptions.map(\.url))
+        let hadLink = profiles.activeLink != nil
         if ShareLinkParser.containsShareLink(text) {
             _ = await profiles.importText(text)
         } else if SubscriptionLinkResolver.resolve(text) != nil {
@@ -401,6 +470,11 @@ struct HomeView: View {
             return
         }
         show(String(localized: "Subscription added"))
+        // The link just added is the one in use from now on, as on Android.
+        if let added = profiles.subscriptions.first(where: { !linksBefore.contains($0.url) }) {
+            profiles.useLink(added.url)
+            if hadLink { moveToLinkIfConnected() }
+        }
         if !vpn.isConnected, !vpn.isBusy { tapConnect() }
     }
 
@@ -430,9 +504,9 @@ struct HomeView: View {
             failures += 1
             guard failures >= 2, let current = profiles.selectedProfile else { continue }
             failures = 0
-            await profiles.pingAll()
-            let next = profiles.profiles
-                .filter { $0.core != .warp && $0.id != current.id && ($0.latencyMs ?? -1) > 0 }
+            await profiles.pingAll(only: contenders, markFresh: true)
+            let next = contenders
+                .filter { $0.id != current.id && ($0.latencyMs ?? -1) > 0 }
                 .min { $0.latencyMs! < $1.latencyMs! }
             guard let next else { continue }
             profiles.select(next)

@@ -1,16 +1,17 @@
 import SwiftUI
 import UIKit
 
-/// Settings, as in SkyRay's Android build: a short list of what a customer needs. Everything
-/// else — rules, routing, backups, WARP and the rest — waits behind expert mode (seven taps on
-/// the version in About), where the full settings screen appears as "Advanced".
+/// Settings, as in SkyRay's Android build: a short list of what a customer needs, in the same
+/// order. (Android's "Apps that bypass the VPN" has no iOS counterpart: iOS gives a VPN app no
+/// per-app routing.) Everything else — rules, routing, backups, WARP and the rest — waits
+/// behind expert mode (seven taps on the version in About), where the full settings screen
+/// appears as "Advanced".
 struct SettingsView: View {
     @EnvironmentObject private var profiles: ProfilesViewModel
     @EnvironmentObject private var vpn: VPNManager
     @Environment(\.dismiss) private var dismiss
     @AppStorage("EthaExpertMode") private var expertMode = false
     @State private var showServers = false
-    @State private var showAdd = false
     @State private var showAdvanced = false
     @State private var showLogs = false
     @State private var confirmDelete = false
@@ -23,8 +24,8 @@ struct SettingsView: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         row("Choose a server", detail: serverDetail) { showServers = true }
-                        row("Add a link", detail: String(localized: "A subscription or a server link")) { showAdd = true }
                         row("Language", detail: currentLanguage) { openAppSettings() }
+                        row("Check for update", detail: nil) { open(AppConstants.appStoreURL) }
                         row("Send logs to support", detail: String(localized: "Only when support asks for it")) { showLogs = true }
                         NavigationLink {
                             AboutView(expertMode: $expertMode) { show($0) }
@@ -65,8 +66,7 @@ struct SettingsView: View {
         }
         .navigationViewStyle(.stack)
         .tint(Etha.brand)
-        .sheet(isPresented: $showServers) { ServerPickerView() }
-        .sheet(isPresented: $showAdd) { AddConfigFlow() }
+        .sheet(isPresented: $showServers) { LinkServerSheet() }
         .sheet(isPresented: $showAdvanced) { FullSettingsView() }
         .sheet(isPresented: $showLogs) { ActivitySheet(items: [logText()]) }
     }
@@ -139,6 +139,91 @@ struct SettingsView: View {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             if toast == text { toast = nil }
         }
+    }
+}
+
+/// "Choose a server", as on Android: Auto and the servers of the link in use, with their
+/// latency, and Test again. A new choice while connected moves the connection over.
+private struct LinkServerSheet: View {
+    @EnvironmentObject private var profiles: ProfilesViewModel
+    @EnvironmentObject private var vpn: VPNManager
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            List {
+                Button { chooseAuto() } label: {
+                    line(String(localized: "Auto (fastest)"), detail: nil, chosen: profiles.isAutomatic)
+                }
+                ForEach(profiles.linkServers) { p in
+                    Button { choose(p) } label: {
+                        line(p.name, detail: latency(p), chosen: !profiles.isAutomatic && p.id == profiles.selectedId)
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .navigationTitle(Text("Choose a server"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(Text("Close"))
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { Task { await testAgain() } } label: {
+                        if profiles.isPinging { ProgressView() } else { Text("Test again") }
+                    }
+                    .disabled(profiles.isPinging)
+                }
+            }
+        }
+        .navigationViewStyle(.stack)
+        .tint(Etha.brand)
+    }
+
+    private func line(_ title: String, detail: String?, chosen: Bool) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: title).font(.system(size: 17)).foregroundColor(Etha.ink).lineLimit(1)
+                if let detail { Text(verbatim: detail).font(.system(size: 14)).foregroundColor(Etha.muted) }
+            }
+            Spacer()
+            if chosen { Image(systemName: "checkmark").foregroundColor(Etha.brand) }
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func latency(_ p: ServerProfile) -> String {
+        switch p.latencyMs {
+        case nil: return String(localized: "not tested")
+        case let ms? where ms < 0: return String(localized: "failed")
+        case let ms?: return "\(ms) ms"
+        }
+    }
+
+    private func chooseAuto() {
+        profiles.isAutomatic = true
+        dismiss()
+        Task {
+            if !profiles.latenciesAreFresh { await profiles.pingAll(only: profiles.linkServers, markFresh: true) }
+            await moveToBestIfConnected()
+        }
+    }
+
+    private func choose(_ p: ServerProfile) {
+        profiles.choose(p)
+        dismiss()
+        if vpn.isConnected { Task { await vpn.reconnect(profile: p) } }
+    }
+
+    private func testAgain() async {
+        await profiles.pingAll(only: profiles.linkServers, markFresh: true)
+        if profiles.isAutomatic { await moveToBestIfConnected() }
+    }
+
+    private func moveToBestIfConnected() async {
+        let current = profiles.selectedId
+        guard let best = profiles.selectFastest(), best.id != current, vpn.isConnected else { return }
+        await vpn.reconnect(profile: best)
     }
 }
 
