@@ -49,4 +49,56 @@ final class TapConnectTests: XCTestCase {
         add(shot)
         print("[ui] after 40 s: connected=\(app.staticTexts["Connected"].exists) notConnected=\(app.staticTexts["Not connected"].exists)")
     }
+
+    /// Connect, the ad, close it, disconnect, connect again: the second connect falls in the
+    /// 20-minute gap, so the connecting screen must close quickly and the tunnel stay up.
+    func testSecondConnectInCooldown() throws {
+        app.launch()
+        let connect = app.buttons["connect"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 30), "no Connect button")
+        if app.staticTexts["Connected"].exists {
+            connect.tap()
+            _ = app.staticTexts["Not connected"].waitForExistence(timeout: 20)
+            sleep(2)
+        }
+        connect.tap()
+        sleep(35)   // the ad plays; the test ad grants its reward after a few seconds
+        let shot0 = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot0.name = "ad up"
+        shot0.lifetime = .keepAlways
+        add(shot0)
+        for line in app.debugDescription.split(separator: "\n") where line.contains("Button") || line.localizedCaseInsensitiveContains("close") {
+            print("[ui] ad: \(line.trimmingCharacters(in: .whitespaces).prefix(160))")
+        }
+        let close = app.buttons.matching(NSPredicate(format: "label == 'Close' AND enabled == true")).firstMatch
+        if close.exists { close.tap() } else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.08)).tap() }
+        sleep(4)
+        XCTAssertTrue(connect.waitForExistence(timeout: 10), "the ad did not close")
+        connect.tap()   // disconnect
+        _ = app.staticTexts["Not connected"].waitForExistence(timeout: 20)
+        sleep(2)
+        connect.tap()   // connect again, inside the 20 minutes
+        for step in [1, 3, 6, 10] {
+            sleep(step == 1 ? 1 : UInt32(step - [1, 3, 6, 10][max(0, [1, 3, 6, 10].firstIndex(of: step)! - 1)]))
+            let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            shot.name = "second connect \(step)s"
+            shot.lifetime = .keepAlways
+            add(shot)
+        }
+        print("[ui] second connect: connected=\(app.staticTexts["Connected"].exists)")
+    }
+
+    /// What is on screen right now, without launching anew: a picture and the buttons it has.
+    func testLookAtScreen() throws {
+        let running = XCUIApplication()
+        running.activate()
+        sleep(1)
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "now"
+        shot.lifetime = .keepAlways
+        add(shot)
+        for b in running.buttons.allElementsBoundByIndex.prefix(20) {
+            print("[ui] button id=\(b.identifier) label=\(b.label) frame=\(b.frame)")
+        }
+    }
 }
