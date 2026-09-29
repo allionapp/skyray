@@ -162,6 +162,16 @@ struct SkyRayApp: App {
                 }
                 await vpn.runSelfTest()
             }
+            #if DEBUG
+            // -SignalCheck YES: what Google sees from this app over the tunnel (see SignalCheck).
+            if defaults.bool(forKey: "SignalCheck") {
+                for _ in 0..<40 where !vpn.isConnected {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                }
+                try? await Task.sleep(nanoseconds: 4_000_000_000)   // the exit probe refines the locale first
+                SignalCheck.shared.run()
+            }
+            #endif
         }
     }
 }
