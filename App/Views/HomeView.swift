@@ -618,7 +618,7 @@ struct HomeView: View {
         show(String(localized: "Subscription added"))
         // The link just added (or added again) is the one in use from now on, as on Android.
         let target = profiles.subscriptions.first(where: { !linksBefore.contains($0.url) })?.url
-            ?? subscriptionURL.flatMap { url in profiles.subscriptions.first(where: { $0.url == url })?.url }
+            ?? subscriptionURL.flatMap { profiles.storedLink(for: $0) }   // or its account under another address
         if let target, target != profiles.activeLink?.url {
             profiles.useLink(target)
             if hadLink { moveToLinkIfConnected() }

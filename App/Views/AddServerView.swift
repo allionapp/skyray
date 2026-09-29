@@ -117,7 +117,7 @@ struct AddServerView: View {
                             }
                         }
                         Spacer()
-                        Button { Task { await profiles.importSubscription(sub.url) } } label: { Image(systemName: "arrow.clockwise") }
+                        Button { Task { await profiles.importSubscription(sub.url, refreshOnly: true) } } label: { Image(systemName: "arrow.clockwise") }
                             .buttonStyle(.borderless)
                         Button(role: .destructive) { profiles.removeSubscription(sub.url) } label: { Image(systemName: "trash") }
                             .buttonStyle(.borderless)

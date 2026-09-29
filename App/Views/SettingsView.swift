@@ -146,7 +146,7 @@ struct FullSettingsView: View {
                 }
                 Spacer()
                 Button {
-                    Task { await profiles.importSubscription(sub.url) }
+                    Task { await profiles.importSubscription(sub.url, refreshOnly: true) }
                 } label: {
                     if updating { ProgressView().scaleEffect(0.7).frame(width: 44) } else { Text("Update") }
                 }

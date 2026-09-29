@@ -51,6 +51,30 @@ enum SubscriptionLinkResolver {
         return nil
     }
 
+    /// The EthaVPN service's hosts: one account's link works on each of them. Oldest first:
+    /// mobileiphone.org is filtered in Iran, mobileiphonez.org is the CDN-fronted domain, and
+    /// skyrayconfig.org serves only the links and is where an account ends up. An account moves to
+    /// an older one only when the newer does not answer, and never onto the first. Any other https
+    /// link is still accepted as a plain subscription.
+    static let serviceHosts = ["fra.mobileiphone.org", "fra.mobileiphonez.org", "fra.skyrayconfig.org"]
+
+    /// The account a link of the service names: its /sub/<token> path, the same on every host.
+    /// nil for any other link.
+    static func serviceAccount(of link: String) -> String? {
+        guard let c = URLComponents(string: stripFragment(link.trimmingCharacters(in: .whitespacesAndNewlines))),
+              c.scheme?.lowercased() == "https", let host = c.host?.lowercased(), serviceHosts.contains(host),
+              c.path.hasPrefix("/sub/") else { return nil }
+        let token = c.path.dropFirst("/sub/".count)
+        return token.count >= 8 && !token.contains("/") ? c.path : nil
+    }
+
+    /// A service link's host among `serviceHosts` (higher is newer); -1 for any other link.
+    static func hostRank(of link: String) -> Int {
+        guard let host = URLComponents(string: stripFragment(link.trimmingCharacters(in: .whitespacesAndNewlines)))?.host?.lowercased()
+        else { return -1 }
+        return serviceHosts.firstIndex(of: host) ?? -1
+    }
+
     private static func unwrap(_ payload: String) -> Resolved? {
         var value = payload
         if let decoded = value.removingPercentEncoding, decoded.lowercased().hasPrefix("http") { value = decoded }

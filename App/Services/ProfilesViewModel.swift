@@ -246,9 +246,17 @@ final class ProfilesViewModel: ObservableObject {
     func importText(_ text: String, subscriptionURL: String? = nil) async -> Int {
         isImporting = true
         defer { isImporting = false }
-        let outcome = await Task.detached(priority: .userInitiated) {
+        return apply(await Self.parse(text, subscriptionURL: subscriptionURL))
+    }
+
+    private static func parse(_ text: String, subscriptionURL: String?) async -> ShareLinkParser.Outcome {
+        await Task.detached(priority: .userInitiated) {
             ShareLinkParser.parse(text, subscriptionURL: subscriptionURL)
         }.value
+    }
+
+    /// Adds parsed servers (deduplicated by outbound) and says how it went. Nothing in here awaits.
+    private func apply(_ outcome: ShareLinkParser.Outcome) -> Int {
         let existing = Set(profiles.map { $0.outboundJSON })
         let fresh = outcome.profiles.filter { !existing.contains($0.outboundJSON) }
         let duplicates = outcome.profiles.count - fresh.count
@@ -276,20 +284,29 @@ final class ProfilesViewModel: ObservableObject {
     /// Servers answering with a redirect to such a deep link are unwrapped too.
     /// Fetches the subscription and replaces its servers. Returns whether the fetch worked: the
     /// servers stored from before are no proof, since a link the server no longer knows would
-    /// otherwise look fine.
+    /// otherwise look fine. `refreshOnly` is a refresh of a link already here (the background
+    /// update, a refresh button): it never moves a link, and drops its result when the link moved
+    /// to another address or was removed while it fetched.
     @discardableResult
-    func importSubscription(_ urlString: String) async -> Bool {
+    func importSubscription(_ urlString: String, refreshOnly: Bool = false, preferStored: Bool = true, keepAt: String? = nil) async -> Bool {
         guard let resolved = SubscriptionLinkResolver.resolve(urlString) else {
             message = String(localized: "Enter a valid http(s) subscription URL.")
             writeImportLog("invalid subscription input: \(urlString.prefix(60))")
             return false
         }
+        // An older address of an account stored under a newer one (an old message in Telegram): the
+        // newer one is tried first, so the account does not go back to a filtered host. If that one
+        // does not answer with servers, the address given is tried after all.
+        let preferred = refreshOnly || !preferStored ? nil : newerStoredLink(for: resolved.url)
+        // `keepAt`: the filtered first host only lends its answer; the account stays stored under the newer one.
+        let key = keepAt ?? preferred ?? resolved.url
         isImporting = true
-        updatingSubscriptionURL = resolved.url
+        updatingSubscriptionURL = key
         defer { isImporting = false; updatingSubscriptionURL = nil }
         do {
-            let (data, http, finalURL) = try await SubscriptionFetcher.fetch(resolved.url)
+            let (data, http, finalURL) = try await SubscriptionFetcher.fetch(keepAt == nil ? key : resolved.url)
             guard (200..<300).contains(http.statusCode) else {
+                if preferred != nil { return await retryGiven(urlString, instead: preferred) }
                 // The server answered but does not know the link (404 and the like): plain words.
                 message = (400..<500).contains(http.statusCode)
                     ? String(localized: "This link could not be read. It may no longer be valid: ask support for a new one.")
@@ -297,13 +314,21 @@ final class ProfilesViewModel: ObservableObject {
                 writeImportLog("subscription HTTP \(http.statusCode) for \(finalURL)")
                 return false
             }
-            let key = resolved.url
-            let body = String(decoding: data, as: UTF8.self)
+            let outcome = await Self.parse(String(decoding: data, as: UTF8.self), subscriptionURL: key)
+            if preferred != nil, outcome.profiles.isEmpty { return await retryGiven(urlString, instead: preferred) }
+            // From here on nothing awaits, so no other import or refresh can come in between the
+            // changes below (a refresh of the old address used to move a moved link back).
+            if refreshOnly, !subscriptions.contains(where: { $0.url == key }) {
+                writeImportLog("refresh dropped: the link moved or was removed meanwhile")
+                return false
+            }
+            // A link moves only to an address that brought servers.
+            if !refreshOnly, !outcome.profiles.isEmpty { moveSameAccount(to: key) }
             let old = profiles.filter { $0.subscriptionURL == key }
             let oldByOutbound = Dictionary(old.map { ($0.outboundJSON, $0) }, uniquingKeysWith: { a, _ in a })
             let previousSelection = selectedProfile
             profiles.removeAll { $0.subscriptionURL == key }
-            let added = await importText(body, subscriptionURL: key)
+            let added = apply(outcome)
             if added == 0 && !old.isEmpty {
                 // Keep the previous servers rather than leaving the user with nothing.
                 profiles.append(contentsOf: old)
@@ -330,10 +355,57 @@ final class ProfilesViewModel: ObservableObject {
             }
             return added > 0
         } catch {
+            if preferred != nil { return await retryGiven(urlString, instead: preferred) }
             message = String(format: String(localized: "Download failed: %@"), error.localizedDescription)
             writeImportLog("subscription failed: \(error.localizedDescription)")
             return false
         }
+    }
+
+    /// The newer stored address did not answer with servers: the address given is tried after all.
+    /// The account moves there, except onto the first host, which is filtered in Iran: that one only
+    /// lends its answer, and the account stays stored under the newer address.
+    private func retryGiven(_ urlString: String, instead preferred: String?) async -> Bool {
+        let given = SubscriptionLinkResolver.resolve(urlString)?.url ?? urlString
+        let lendOnly = SubscriptionLinkResolver.hostRank(of: given) == 0
+        return await importSubscription(urlString, preferStored: false, keepAt: lendOnly ? preferred : nil)
+    }
+
+    /// The same account on another of the service's hosts (the bot hands out a newer address once
+    /// the old one is filtered): its servers, quota and place as the link in use move to `url`
+    /// instead of a second copy of the account appearing. Every copy folds into one: builds before
+    /// 1.1.6 (21) kept a second, empty entry when the same account came from another host. Called
+    /// only once `url` has answered, so a link never moves to an address that does not work.
+    private func moveSameAccount(to url: String) {
+        guard let account = SubscriptionLinkResolver.serviceAccount(of: url) else { return }
+        let others = Set(subscriptions.map(\.url).filter { $0 != url && SubscriptionLinkResolver.serviceAccount(of: $0) == account })
+        guard !others.isEmpty else { return }
+        if !subscriptions.contains(where: { $0.url == url }), let i = subscriptions.firstIndex(where: { others.contains($0.url) }) {
+            subscriptions[i].url = url   // the first copy keeps its place in the list, under the new address
+        }
+        subscriptions.removeAll { others.contains($0.url) }
+        for i in profiles.indices where profiles[i].subscriptionURL.map(others.contains) == true { profiles[i].subscriptionURL = url }
+        if let active = activeLinkURL, others.contains(active) { activeLinkURL = url }
+        store.saveSubscriptions(subscriptions)
+        persist()
+        writeImportLog("the same account moved from \(others.compactMap { URL(string: $0)?.host }.sorted()) to \(URL(string: url)?.host ?? "?")")
+    }
+
+    /// The link an account is stored under already when `url` names an older address of it (later
+    /// service hosts are newer; the first is filtered in Iran): that one is tried first. nil otherwise.
+    private func newerStoredLink(for url: String) -> String? {
+        guard let account = SubscriptionLinkResolver.serviceAccount(of: url) else { return nil }
+        let rank = SubscriptionLinkResolver.hostRank(of: url)
+        return subscriptions.map(\.url)
+            .filter { SubscriptionLinkResolver.serviceAccount(of: $0) == account && SubscriptionLinkResolver.hostRank(of: $0) > rank }
+            .max { SubscriptionLinkResolver.hostRank(of: $0) < SubscriptionLinkResolver.hostRank(of: $1) }
+    }
+
+    /// The stored link for `url`: the same one, or the same account under another of the service's hosts.
+    func storedLink(for url: String) -> String? {
+        if subscriptions.contains(where: { $0.url == url }) { return url }
+        guard let account = SubscriptionLinkResolver.serviceAccount(of: url) else { return nil }
+        return subscriptions.first { SubscriptionLinkResolver.serviceAccount(of: $0.url) == account }?.url
     }
 
     /// Debug aid: readable from the Mac with devicectl (Documents/import.log).
@@ -385,7 +457,7 @@ final class ProfilesViewModel: ObservableObject {
     }
 
     func updateAllSubscriptions() async {
-        for sub in subscriptions { await importSubscription(sub.url) }
+        for sub in subscriptions { await importSubscription(sub.url, refreshOnly: true) }
     }
 
     /// Refreshes subscriptions whose own interval (or the app-wide interval) has elapsed.
@@ -394,7 +466,7 @@ final class ProfilesViewModel: ObservableObject {
             let hours = sub.updateIntervalHours ?? defaultHours
             guard hours > 0 else { continue }
             if Date().timeIntervalSince(sub.lastUpdated) > Double(hours) * 3600 {
-                await importSubscription(sub.url)
+                await importSubscription(sub.url, refreshOnly: true)
             }
         }
     }
