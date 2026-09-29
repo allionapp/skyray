@@ -89,7 +89,9 @@ struct SkyRayApp: App {
         // UMP consent and first ad request would leave on the real network,
         // before any tunnel, carrying the user's real location. They are started
         // over the tunnel on connect (VPNManager.apply), so AdMob sees the exit
-        // node. See AdsManager and AdSignalOverride.
+        // node. See AdsManager and AdSignalOverride. Only the system's tracking
+        // question comes now, on first launch: it sends nothing anywhere.
+        Task { await AdsManager.shared.askTrackingAtLaunch() }
         await handleLaunchArguments()
         if vpn.settings.pingOnOpen { Task { await profiles.pingAll() } }
         if vpn.settings.autoConnectOnLaunch, !vpn.isConnected, !UserDefaults.standard.bool(forKey: "AutoDisconnect") {

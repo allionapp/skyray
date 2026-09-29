@@ -122,11 +122,34 @@ final class AdsManager: NSObject, ObservableObject {
     }
 
     private func requestTrackingThenInitialize(chain: Int) {
-        ATTrackingManager.requestTrackingAuthorization { [weak self] _ in
-            Task { @MainActor in
-                guard let self, chain == self.consentChain else { return }
-                self.initializeAndLoad()
+        Task { @MainActor in
+            await Self.untilActive()
+            ATTrackingManager.requestTrackingAuthorization { [weak self] _ in
+                Task { @MainActor in
+                    guard let self, chain == self.consentChain else { return }
+                    self.initializeAndLoad()
+                }
             }
+        }
+    }
+
+    /// The tracking prompt, asked once on first launch as soon as the app is on screen (App Review
+    /// looks for it there, before anything is collected). It is only the system's question: none
+    /// of Google's code runs and nothing is sent before a connect. A connect skips it once answered.
+    func askTrackingAtLaunch() async {
+        guard ATTrackingManager.trackingAuthorizationStatus == .notDetermined else { return }
+        await Self.untilActive()
+        try? await Task.sleep(nanoseconds: 700_000_000)   // the first screen settles first
+        guard ATTrackingManager.trackingAuthorizationStatus == .notDetermined else { return }
+        let status = await ATTrackingManager.requestTrackingAuthorization()
+        ProfileStore.shared.appendTunnelLine("[ads] tracking prompt at launch: \(status.rawValue)")
+    }
+
+    /// The system shows the tracking prompt only to an active app; a request made while a VPN or
+    /// consent sheet is still closing is dropped without a prompt. Waits up to 5 s.
+    private static func untilActive() async {
+        for _ in 0..<20 where UIApplication.shared.applicationState != .active {
+            try? await Task.sleep(nanoseconds: 250_000_000)
         }
     }
 
