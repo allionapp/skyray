@@ -146,9 +146,10 @@ final class VPNManager: ObservableObject {
         // Kill switch: with includeAllNetworks nothing leaves the device outside the tunnel.
         proto.includeAllNetworks = settings.killSwitch
         proto.excludeLocalNetworks = settings.killSwitch && settings.routingMode != .global
-        // No app gets around the tunnel by tying its traffic to Wi-Fi or cellular itself: what the
-        // tunnel's routes cover goes through it (Google's SDKs in other apps included).
-        proto.enforceRoutes = true
+        // Not enforceRoutes: on a real iPhone it sent the tunnel's own traffic back into the
+        // tunnel, so nothing got through (builds 15 and 16, never released). Set false on every
+        // connect so a configuration saved by those builds is cleared too.
+        proto.enforceRoutes = false
         manager.protocolConfiguration = proto
         manager.localizedDescription = AppConstants.vpnDisplayName
         manager.isEnabled = true
