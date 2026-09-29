@@ -19,18 +19,21 @@ final class AdsManager: NSObject, ObservableObject {
     /// Cooldown so a flaky connection that drops and reconnects repeatedly
     /// doesn't show an ad every time.
     private let minInterval: TimeInterval = 20 * 60
-    /// How long after a connect an ad that arrives late is still shown.
-    private let showWindow: TimeInterval = 60
+    /// How long the connecting screen waits for the ad once it has been requested.
+    private let loadWait: TimeInterval = 12
+    /// The longest it waits at all, the consent form and the tracking prompt included.
+    private let maxWait: TimeInterval = 60
 
     /// Set by VPNManager: whether the tunnel is up and so carries this app's requests. No ad
     /// request leaves without it, so none goes to Google from the real network.
     var tunnelUp = false {
-        didSet { if !tunnelUp { pendingShowUntil = nil; pendingSkipHandler = nil } }
+        didSet { if !tunnelUp { giveUpPending() } }
     }
 
-    /// A connect still waiting for its ad: shown when it arrives, within `showWindow`.
+    /// A connect still waiting for its ad: shown when it arrives, until `pendingShowUntil`.
     private var pendingShowUntil: Date?
     private var pendingSkipHandler: (() -> Void)?
+    private var pendingReady: (() -> Void)?
 
     private override init() { super.init() }
 
@@ -68,6 +71,11 @@ final class AdsManager: NSObject, ObservableObject {
     private func loadAd() {
         guard tunnelUp, !isLoadingAd, rewardedInterstitial == nil else { return }
         isLoadingAd = true
+        // From the request on, the connecting screen waits only so long for the answer.
+        if let until = pendingShowUntil {
+            pendingShowUntil = min(until, Date().addingTimeInterval(loadWait))
+            watchDeadline()
+        }
         AdSignalOverride.reassert()
         ProfileStore.shared.appendTunnelLine("[ads] request over the tunnel: \(AdSignalOverride.snapshot())")
         GADRewardedInterstitialAd.load(withAdUnitID: AdsConfig.rewardedInterstitialUnitID, request: GADRequest()) { [weak self] ad, _ in
@@ -75,17 +83,42 @@ final class AdsManager: NSObject, ObservableObject {
             self.isLoadingAd = false
             self.rewardedInterstitial = ad
             ad?.fullScreenContentDelegate = self
-            self.showPending()
+            if ad == nil { self.giveUpPending() } else { self.showPending() }
         }
     }
 
     /// The ad the first connect was waiting for has arrived: shown if it is still in time.
     private func showPending() {
-        guard let until = pendingShowUntil, let handler = pendingSkipHandler else { return }
+        guard let until = pendingShowUntil, let handler = pendingSkipHandler, let ready = pendingReady else { return }
+        clearPending()
+        guard tunnelUp, Date() < until, UIApplication.shared.applicationState == .active else {
+            ready()
+            return
+        }
+        showAfterConnect(onAdSkipped: handler, onReady: ready)
+    }
+
+    private func clearPending() {
         pendingShowUntil = nil
         pendingSkipHandler = nil
-        guard tunnelUp, Date() < until, UIApplication.shared.applicationState == .active else { return }
-        showAfterConnect(onAdSkipped: handler)
+        pendingReady = nil
+    }
+
+    /// No ad for this connect after all: the connecting screen is told, and nothing shows later.
+    private func giveUpPending() {
+        let ready = pendingReady
+        clearPending()
+        ready?()
+    }
+
+    private func watchDeadline() {
+        guard let until = pendingShowUntil else { return }
+        let wait = max(0, until.timeIntervalSinceNow) + 0.05
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+            guard let self, let current = self.pendingShowUntil else { return }
+            if Date() >= current { self.giveUpPending() } else { self.watchDeadline() }
+        }
     }
 
     /// Shows the ad if one is ready and the cooldown has elapsed; always safe
@@ -103,14 +136,22 @@ final class AdsManager: NSObject, ObservableObject {
     /// the app; that is the advertiser's own call to action, not a walk-out.
     private var didClickAd = false
 
-    func showAfterConnect(onAdSkipped: @escaping () -> Void) {
-        guard didStart else { return }
-        if let last = lastShown, Date().timeIntervalSince(last) < minInterval { return }
+    /// [onReady] runs exactly once: when the ad goes on screen, or when it is clear none will
+    /// (cooldown, no fill, the wait limits passed, the tunnel went down). The connecting screen
+    /// closes then.
+    func showAfterConnect(onAdSkipped: @escaping () -> Void, onReady: @escaping () -> Void) {
+        var done = false
+        let ready = { if !done { done = true; onReady() } }
+        guard didStart, tunnelUp else { return ready() }
+        if let last = lastShown, Date().timeIntervalSince(last) < minInterval { return ready() }
         guard let ad = rewardedInterstitial, let root = UIApplication.topMostViewController() else {
             // The SDK starts only now, over the tunnel, so the first ad is usually still on its
-            // way: show it when it arrives.
-            pendingShowUntil = Date().addingTimeInterval(showWindow)
+            // way: show it when it arrives, while the connecting screen waits.
+            giveUpPending()
+            pendingShowUntil = Date().addingTimeInterval(maxWait)
             pendingSkipHandler = onAdSkipped
+            pendingReady = ready
+            watchDeadline()
             loadAd()
             return
         }
@@ -131,6 +172,7 @@ final class AdsManager: NSObject, ObservableObject {
             self?.earnedReward = true
             ProfileStore.shared.appendTunnelLine("[ads] reward earned")
         }
+        ready()
     }
 }
 

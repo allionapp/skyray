@@ -274,11 +274,15 @@ final class ProfilesViewModel: ObservableObject {
     /// Downloads a subscription. Accepts plain http(s) URLs and the launcher deep
     /// links panels give out for other apps (hiddify://import/…, v2box://…, clash://…).
     /// Servers answering with a redirect to such a deep link are unwrapped too.
-    func importSubscription(_ urlString: String) async {
+    /// Fetches the subscription and replaces its servers. Returns whether the fetch worked: the
+    /// servers stored from before are no proof, since a link the server no longer knows would
+    /// otherwise look fine.
+    @discardableResult
+    func importSubscription(_ urlString: String) async -> Bool {
         guard let resolved = SubscriptionLinkResolver.resolve(urlString) else {
             message = String(localized: "Enter a valid http(s) subscription URL.")
             writeImportLog("invalid subscription input: \(urlString.prefix(60))")
-            return
+            return false
         }
         isImporting = true
         updatingSubscriptionURL = resolved.url
@@ -286,9 +290,12 @@ final class ProfilesViewModel: ObservableObject {
         do {
             let (data, http, finalURL) = try await SubscriptionFetcher.fetch(resolved.url)
             guard (200..<300).contains(http.statusCode) else {
-                message = String(format: String(localized: "Subscription server returned HTTP %d."), http.statusCode)
+                // The server answered but does not know the link (404 and the like): plain words.
+                message = (400..<500).contains(http.statusCode)
+                    ? String(localized: "This link could not be read. It may no longer be valid: ask support for a new one.")
+                    : String(format: String(localized: "Subscription server returned HTTP %d."), http.statusCode)
                 writeImportLog("subscription HTTP \(http.statusCode) for \(finalURL)")
-                return
+                return false
             }
             let key = resolved.url
             let body = String(decoding: data, as: UTF8.self)
@@ -321,9 +328,11 @@ final class ProfilesViewModel: ObservableObject {
             if ProfileStore.shared.loadSettings().pingAfterSubscriptionUpdate, added > 0 {
                 Task { await pingAll(); sortByLatency() }
             }
+            return added > 0
         } catch {
             message = String(format: String(localized: "Download failed: %@"), error.localizedDescription)
             writeImportLog("subscription failed: \(error.localizedDescription)")
+            return false
         }
     }
 

@@ -15,6 +15,10 @@ struct HomeView: View {
     /// Automatic mode tests every server before connecting; that wait needs its own label.
     @State private var findingFastest = false
     @State private var toast: String?
+    /// The connecting screen: up from the tap on Connect until the connection is ready to use.
+    @State private var preparing = false
+    @State private var progress: Double = 0
+    @State private var progressCap: Double = 0
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -36,6 +40,7 @@ struct HomeView: View {
                     .frame(maxWidth: .infinity)
                 }
             }
+            if preparing { connectingScreen }
             if let toast {
                 Text(toast)
                     .font(.system(size: 15))
@@ -70,6 +75,16 @@ struct HomeView: View {
                         profiles.activeLink.map { profiles.label(of: $0) } ?? ""))
         }
         .task(id: vpn.isConnected) { await watchLine() }
+        .task(id: preparing) { await runProgress() }
+        .onChange(of: vpn.readyToUse) { _ in finishPreparing() }
+        .onChange(of: vpn.status) { status in
+            switch status {
+            case .connecting, .reasserting: raise(to: 55)
+            case .connected: raise(to: 95)
+            case .disconnected, .invalid: if preparing, !findingFastest { preparing = false }
+            default: break
+            }
+        }
         .onChange(of: profiles.pendingLink) { _ in takePendingLink() }
         .onAppear {
             takePendingLink()
@@ -424,12 +439,82 @@ struct HomeView: View {
             vpn.disconnect()
             return
         }
+        if !vpn.isDemo { startPreparing() }
         Task {
             findingFastest = profiles.isAutomatic && contenders.count > 1 && !profiles.latenciesAreFresh
             let target = await profiles.connectionTarget()
             findingFastest = false
-            guard let target else { return }
+            guard let target else {
+                preparing = false
+                return
+            }
+            raise(to: 45)
             await vpn.toggle(profile: target)
+            // A start that failed outright (no permission, the system refused) changes no status:
+            // the screen must not wait for one.
+            if vpn.status == .disconnected || vpn.status == .invalid { preparing = false }
+        }
+    }
+
+    // MARK: Connecting screen
+
+    /// Covers Home from the tap on Connect until the connection is ready to use: the best line
+    /// is picked, the tunnel comes up, and the ad that comes first loads through it. The figure
+    /// climbs toward the stage reached and never stops, so a slow step still shows movement.
+    private var connectingScreen: some View {
+        ZStack {
+            Etha.canvas.ignoresSafeArea()
+            VStack(spacing: 18) {
+                Text(verbatim: "\(Int(progress))%")
+                    .font(.system(size: 44, weight: .bold)).foregroundColor(Etha.ink)
+                    .monospacedDigit()
+                ProgressView(value: progress, total: 100)
+                    .tint(Etha.brand)
+                    .scaleEffect(x: 1, y: 2.2, anchor: .center)
+                    .padding(.horizontal, 8)
+                Text("Connecting…").font(.system(size: 18, weight: .semibold)).foregroundColor(Etha.ink)
+                    .padding(.top, 8)
+                Text("Getting your connection ready. A short ad plays, then you're connected.")
+                    .font(.system(size: 15)).foregroundColor(Etha.muted)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 36)
+            .frame(maxWidth: 520)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {}   // nothing underneath is tappable while it is up
+        .transition(.opacity)
+    }
+
+    private func startPreparing() {
+        progress = 0
+        progressCap = 30
+        preparing = true
+    }
+
+    private func raise(to cap: Double) {
+        if preparing { progressCap = max(progressCap, cap) }
+    }
+
+    private func runProgress() async {
+        guard preparing else { return }
+        var elapsed = 0.0
+        while preparing, !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            elapsed += 0.1
+            progress += (progressCap - progress) * 0.05
+            if elapsed > 90 { preparing = false }   // never a screen that stays
+        }
+    }
+
+    /// Ready: 100%, a moment to see it, and the screen goes.
+    private func finishPreparing() {
+        guard preparing else { return }
+        progressCap = 100
+        progress = 100
+        Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            preparing = false
         }
     }
 
@@ -474,22 +559,31 @@ struct HomeView: View {
         let before = profiles.profiles.count
         let linksBefore = Set(profiles.subscriptions.map(\.url))
         let hadLink = profiles.activeLink != nil
+        // A subscription is judged by its own fetch, a link added again included: its old servers
+        // alone would read "added" for a link the server no longer knows.
+        var works = false
+        var subscriptionURL: String?
+        profiles.message = nil
         if ShareLinkParser.containsShareLink(text) {
             _ = await profiles.importText(text)
-        } else if SubscriptionLinkResolver.resolve(text) != nil {
-            await profiles.importSubscription(text)
+            works = profiles.profiles.count > before
+        } else if let resolved = SubscriptionLinkResolver.resolve(text) {
+            works = await profiles.importSubscription(text)
+            subscriptionURL = resolved.url
         } else {
             show(String(localized: "No link found. In Telegram, tap your link — it opens here."))
             return
         }
-        guard profiles.profiles.count > before else {
-            show(profiles.message ?? String(localized: "Could not read this link"))
+        guard works else {
+            show(profiles.message ?? String(localized: "This link could not be read. It may no longer be valid: ask support for a new one."))
             return
         }
         show(String(localized: "Subscription added"))
-        // The link just added is the one in use from now on, as on Android.
-        if let added = profiles.subscriptions.first(where: { !linksBefore.contains($0.url) }) {
-            profiles.useLink(added.url)
+        // The link just added (or added again) is the one in use from now on, as on Android.
+        let target = profiles.subscriptions.first(where: { !linksBefore.contains($0.url) })?.url
+            ?? subscriptionURL.flatMap { url in profiles.subscriptions.first(where: { $0.url == url })?.url }
+        if let target, target != profiles.activeLink?.url {
+            profiles.useLink(target)
             if hadLink { moveToLinkIfConnected() }
         }
         if !vpn.isConnected, !vpn.isBusy { tapConnect() }

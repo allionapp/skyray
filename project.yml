@@ -62,6 +62,8 @@ targets:
         NSUserTrackingUsageDescription: "This identifier is used to show ads that are more relevant to you after you connect."
         ITSAppUsesNonExemptEncryption: false
         GADApplicationIdentifier: "ca-app-pub-8085563084618250~4284064162"
+        # The ad SDK must not start Google's app measurement with the app, before any tunnel.
+        GADDelayAppMeasurementInit: true
         SKAdNetworkItems:
           - SKAdNetworkIdentifier: cstr6suwn9.skadnetwork
         CFBundleLocalizations: [en, fa]

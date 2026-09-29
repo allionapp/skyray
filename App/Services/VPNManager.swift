@@ -70,6 +70,9 @@ final class VPNManager: ObservableObject {
 
     var isBusy: Bool { status == .connecting || status == .disconnecting || status == .reasserting }
     var isConnected: Bool { status == .connected }
+    /// Counts up each time a fresh connection is ready to use: its ad is on screen, or none
+    /// will come. The connecting screen closes on it.
+    @Published private(set) var readyToUse = 0
 
     func load() async {
         do {
@@ -143,6 +146,9 @@ final class VPNManager: ObservableObject {
         // Kill switch: with includeAllNetworks nothing leaves the device outside the tunnel.
         proto.includeAllNetworks = settings.killSwitch
         proto.excludeLocalNetworks = settings.killSwitch && settings.routingMode != .global
+        // No app gets around the tunnel by tying its traffic to Wi-Fi or cellular itself: what the
+        // tunnel's routes cover goes through it (Google's SDKs in other apps included).
+        proto.enforceRoutes = true
         manager.protocolConfiguration = proto
         manager.localizedDescription = AppConstants.vpnDisplayName
         manager.isEnabled = true
@@ -171,12 +177,14 @@ final class VPNManager: ObservableObject {
                 AdSignalOverride.apply(country: exitInfo?.country)
                 AdsManager.shared.tunnelUp = true
                 AdsManager.shared.start()
-                AdsManager.shared.showAfterConnect { [weak self] in
+                AdsManager.shared.showAfterConnect(onAdSkipped: { [weak self] in
                     // The ad was closed early: the free connection ends with it.
                     self?.debugNote = "ad closed before the reward; disconnecting"
                     self?.notice = String(localized: "The connection needs the short ad watched through to the end. Tap connect and let it finish.")
                     self?.disconnect()
-                }
+                }, onReady: { [weak self] in
+                    self?.readyToUse += 1
+                })
             }
         } else {
             // Put the device's real locale/time zone back the moment the tunnel
