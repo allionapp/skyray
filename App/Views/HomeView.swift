@@ -19,6 +19,7 @@ struct HomeView: View {
     @State private var preparing = false
     @State private var progress: Double = 0
     @State private var progressCap: Double = 0
+    @State private var preparingSeconds = 0
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -81,7 +82,7 @@ struct HomeView: View {
             switch status {
             case .connecting, .reasserting: raise(to: 55)
             case .connected: raise(to: 95)
-            case .disconnected, .invalid: if preparing, !findingFastest { preparing = false }
+            case .disconnected, .invalid: if preparing, !findingFastest { closePreparing() }
             default: break
             }
         }
@@ -438,27 +439,29 @@ struct HomeView: View {
     /// (this one, the automatic connect after adding a link, iOS's own reconnect) does nothing:
     /// it used to stop it, and the internet dropped a second after "Connected".
     private func tapConnect() {
-        if vpn.isConnected {
+        // Connected, or a connect this screen is not holding (iOS's own, a stuck one): a tap
+        // stops it. A second tap during this app's own connect is held by the connecting screen.
+        if vpn.isConnected || vpn.status == .reasserting || (vpn.status == .connecting && !preparing) {
             vpn.disconnect()
             return
         }
-        guard !preparing, !vpn.isBusy else { return }
+        guard !preparing, vpn.status != .disconnecting else { return }
         if !vpn.isDemo { startPreparing() }
         Task {
             findingFastest = profiles.isAutomatic && contenders.count > 1 && !profiles.latenciesAreFresh
             let target = await profiles.connectionTarget()
             findingFastest = false
             guard let target else {
-                preparing = false
+                closePreparing()
                 return
             }
             raise(to: 45)
             // connect, never toggle: whatever happened during the line test, this tap means on.
             if vpn.isConnected || vpn.isBusy { return }
-            await vpn.connect(profile: target)
+            await vpn.connect(profile: target, userTapped: true)
             // A start the system refused outright (no permission) changes no status: the screen
             // must not wait for one. Otherwise it closes on readyToUse, or on a failed connect.
-            if vpn.lastError != nil { preparing = false }
+            if vpn.lastError != nil { closePreparing() }
         }
     }
 
@@ -483,6 +486,12 @@ struct HomeView: View {
                 Text("Getting your connection ready. A short ad plays, then you're connected.")
                     .font(.system(size: 15)).foregroundColor(Etha.muted)
                     .multilineTextAlignment(.center)
+                if preparingSeconds >= 15 {
+                    Button(String(localized: "Cancel")) { cancelConnecting() }
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundColor(Etha.brand)
+                        .padding(.top, 12)
+                }
             }
             .padding(.horizontal, 36)
             .frame(maxWidth: 520)
@@ -493,6 +502,7 @@ struct HomeView: View {
     }
 
     private func startPreparing() {
+        preparingSeconds = 0
         progress = 0
         progressCap = 30
         preparing = true
@@ -508,9 +518,23 @@ struct HomeView: View {
         while preparing, !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 100_000_000)
             elapsed += 0.1
+            preparingSeconds = Int(elapsed)
             progress += (progressCap - progress) * 0.05
-            if elapsed > 90 { preparing = false }   // never a screen that stays
+            if elapsed > 90 { closePreparing() }   // never a screen that stays
         }
+    }
+
+    /// The screen closes for its own reason (cap, failed start, Cancel): the ad it was waiting
+    /// for must not pop up over Home later.
+    private func closePreparing() {
+        preparing = false
+        AdsManager.shared.cancelPending()
+    }
+
+    /// Cancel on the connecting screen: stop the connect and close.
+    private func cancelConnecting() {
+        vpn.disconnect()
+        closePreparing()
     }
 
     /// Ready: 100%, a moment to see it, and the screen goes.

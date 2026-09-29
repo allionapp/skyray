@@ -24,7 +24,9 @@ final class AdsManager: NSObject, ObservableObject {
     /// replaced rather than shown (it would fail to present).
     private var loadedAt: Date?
     private let maxAdAge: TimeInterval = 55 * 60
-    private var isLoadingAd = false
+    /// The tunnel whose request is in flight, if any. A request of an earlier tunnel does not
+    /// hold back the current one's.
+    private var loadingGeneration: Int?
     /// Counts tunnels: a request that belongs to an earlier one must not decide the current
     /// connect's ad.
     private var tunnelGeneration = 0
@@ -48,6 +50,17 @@ final class AdsManager: NSObject, ObservableObject {
             tunnelGeneration += 1
             stopWaitingForActive()
             giveUpPending()
+            // Anything of Google's still on screen would go on over the real network: close it.
+            // An ad closed this way is no walk-out (the tunnel is gone already): no skip handler.
+            if isAdOnScreen {
+                skipHandler = nil
+                ProfileStore.shared.appendTunnelLine("[ads] tunnel down with the ad on screen; closing it")
+            }
+            if isAdOnScreen || consentFormShowing {
+                presentingRoot?.presentedViewController?.dismiss(animated: false)
+            }
+            rewardedInterstitial = nil
+            loadedAt = nil
         }
     }
 
@@ -71,13 +84,28 @@ final class AdsManager: NSObject, ObservableObject {
         UMPConsentInformation.sharedInstance.requestConsentInfoUpdate(with: parameters) { [weak self] error in
             Task { @MainActor in
                 guard let self else { return }
-                if let error { ProfileStore.shared.appendTunnelLine("[ads] consent info failed: \(error.localizedDescription)") }
+                // The tunnel went down meanwhile: nothing more of Google's until the next connect.
+                guard self.tunnelUp else { self.setup = .idle; return }
+                if let error {
+                    // Consent could not be looked up (e.g. no consent message set up for the app
+                    // in AdMob): whether ads may be requested is unknown, and the request goes on
+                    // as before; the log says so.
+                    self.consentUnknown = true
+                    ProfileStore.shared.appendTunnelLine("[ads] consent info failed: \(error.localizedDescription)")
+                }
                 guard error == nil, let root = UIApplication.topMostViewController() else {
                     self.requestTrackingThenInitialize()
                     return
                 }
+                self.consentFormShowing = true
+                self.presentingRoot = root
                 UMPConsentForm.loadAndPresentIfRequired(from: root) { [weak self] _ in
-                    Task { @MainActor in self?.requestTrackingThenInitialize() }
+                    Task { @MainActor in
+                        guard let self else { return }
+                        self.consentFormShowing = false
+                        guard self.tunnelUp else { self.setup = .idle; return }
+                        self.requestTrackingThenInitialize()
+                    }
                 }
             }
         }
@@ -89,10 +117,25 @@ final class AdsManager: NSObject, ObservableObject {
         }
     }
 
+    /// Whether the consent lookup failed this run (then the answer is unknown, not "no").
+    private var consentUnknown = false
+    private var consentFormShowing = false
+    /// The view controller the consent form or the ad was presented from, to close it if the
+    /// tunnel goes down while it is up.
+    private weak var presentingRoot: UIViewController?
+
     private func initializeAndLoad() {
         // The tunnel went down during the prompts: the SDK starts with the next connect.
         guard tunnelUp else {
             setup = .idle
+            return
+        }
+        // Consent was looked up and does not allow ad requests (the user said no, or the form
+        // could not be shown): no request, and consent is asked again with the next connect.
+        if !consentUnknown, !UMPConsentInformation.sharedInstance.canRequestAds {
+            ProfileStore.shared.appendTunnelLine("[ads] no consent to request ads; none this time")
+            setup = .idle
+            giveUpPending()
             return
         }
         #if DEBUG
@@ -105,9 +148,9 @@ final class AdsManager: NSObject, ObservableObject {
     }
 
     private func loadAd() {
-        guard tunnelUp, setup == .ready, !isLoadingAd, rewardedInterstitial == nil else { return }
-        isLoadingAd = true
+        guard tunnelUp, setup == .ready, loadingGeneration != tunnelGeneration, rewardedInterstitial == nil else { return }
         let generation = tunnelGeneration
+        loadingGeneration = generation
         // From the request on, the connecting screen waits only so long for the answer.
         if let until = pendingShowUntil {
             pendingShowUntil = min(until, Date().addingTimeInterval(requestedBefore ? loadWait : firstLoadWait))
@@ -122,7 +165,10 @@ final class AdsManager: NSObject, ObservableObject {
     }
 
     private func loaded(_ ad: GADRewardedInterstitialAd?, error: Error?, generation: Int) {
-        isLoadingAd = false
+        if loadingGeneration == generation { loadingGeneration = nil }
+        // An ad that arrives after its tunnel went down was fetched over that tunnel; kept for
+        // the next connect only if one is up now, else dropped (it was closed with the tunnel).
+        if ad != nil, generation != tunnelGeneration, !tunnelUp { return }
         if let ad {
             ProfileStore.shared.appendTunnelLine("[ads] loaded")
             rewardedInterstitial = ad
@@ -132,7 +178,7 @@ final class AdsManager: NSObject, ObservableObject {
             return
         }
         ProfileStore.shared.appendTunnelLine("[ads] no ad: \(error?.localizedDescription ?? "unknown")")
-        // A request from an earlier tunnel: the connect waiting now gets a request of its own.
+        // A request from an earlier tunnel: the connect waiting now has (or gets) its own.
         guard generation == tunnelGeneration else {
             if pendingReady != nil { loadAd() }
             return
@@ -154,8 +200,19 @@ final class AdsManager: NSObject, ObservableObject {
             giveUpPending()
             return
         }
-        guard UIApplication.shared.applicationState == .active, let root = UIApplication.topMostViewController() else {
-            waitForActive()
+        switch UIApplication.shared.applicationState {
+        case .background:
+            // The user left: no ad pops up on their return.
+            giveUpPending()
+            return
+        case .inactive:
+            waitForActive()   // a system prompt (tracking, consent) is up
+            return
+        default:
+            break
+        }
+        guard let root = UIApplication.topMostViewController() else {
+            giveUpPending()
             return
         }
         let skip = pendingSkipHandler
@@ -167,6 +224,9 @@ final class AdsManager: NSObject, ObservableObject {
 
     private func waitForActive() {
         guard activeObserver == nil else { return }
+        backgroundWhileWaiting = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main,
+        ) { [weak self] _ in Task { @MainActor in self?.giveUpPending() } }
         activeObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main,
         ) { [weak self] _ in
@@ -179,7 +239,16 @@ final class AdsManager: NSObject, ObservableObject {
 
     private func stopWaitingForActive() {
         if let observer = activeObserver { NotificationCenter.default.removeObserver(observer) }
+        if let observer = backgroundWhileWaiting { NotificationCenter.default.removeObserver(observer) }
         activeObserver = nil
+        backgroundWhileWaiting = nil
+    }
+    private var backgroundWhileWaiting: NSObjectProtocol?
+
+    /// The connecting screen closed for its own reason (cap, failed start, cancel): the ad it
+    /// was waiting for must not pop up over Home later.
+    func cancelPending() {
+        giveUpPending()
     }
 
     private func clearPending() {
@@ -259,6 +328,7 @@ final class AdsManager: NSObject, ObservableObject {
         isAdOnScreen = true
         skipHandler = onAdSkipped
         presentReady = onReady
+        presentingRoot = root
         // SwiftUI's scenePhase does not reach a view the ad has covered, so the
         // notification is what tells us the user walked out on it.
         backgroundObserver = NotificationCenter.default.addObserver(
