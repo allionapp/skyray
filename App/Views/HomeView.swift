@@ -434,11 +434,15 @@ struct HomeView: View {
 
     // MARK: Actions
 
+    /// Connect, or disconnect when connected. A tap while a connection is already on its way
+    /// (this one, the automatic connect after adding a link, iOS's own reconnect) does nothing:
+    /// it used to stop it, and the internet dropped a second after "Connected".
     private func tapConnect() {
-        if vpn.isConnected || vpn.status == .connecting || vpn.status == .reasserting {
+        if vpn.isConnected {
             vpn.disconnect()
             return
         }
+        guard !preparing, !vpn.isBusy else { return }
         if !vpn.isDemo { startPreparing() }
         Task {
             findingFastest = profiles.isAutomatic && contenders.count > 1 && !profiles.latenciesAreFresh
@@ -449,10 +453,12 @@ struct HomeView: View {
                 return
             }
             raise(to: 45)
-            await vpn.toggle(profile: target)
-            // A start that failed outright (no permission, the system refused) changes no status:
-            // the screen must not wait for one.
-            if vpn.status == .disconnected || vpn.status == .invalid { preparing = false }
+            // connect, never toggle: whatever happened during the line test, this tap means on.
+            if vpn.isConnected || vpn.isBusy { return }
+            await vpn.connect(profile: target)
+            // A start the system refused outright (no permission) changes no status: the screen
+            // must not wait for one. Otherwise it closes on readyToUse, or on a failed connect.
+            if vpn.lastError != nil { preparing = false }
         }
     }
 
@@ -586,7 +592,7 @@ struct HomeView: View {
             profiles.useLink(target)
             if hadLink { moveToLinkIfConnected() }
         }
-        if !vpn.isConnected, !vpn.isBusy { tapConnect() }
+        if !vpn.isConnected, !vpn.isBusy, !preparing { tapConnect() }
     }
 
     private func show(_ text: String) {

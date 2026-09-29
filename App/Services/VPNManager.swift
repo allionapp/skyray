@@ -73,6 +73,9 @@ final class VPNManager: ObservableObject {
     /// Counts up each time a fresh connection is ready to use: its ad is on screen, or none
     /// will come. The connecting screen closes on it.
     @Published private(set) var readyToUse = 0
+    /// Whether this run has seen the tunnel down. A tunnel already up when the app opens is not
+    /// a fresh connect: no ad for it (the user did not just tap Connect).
+    private var sawTunnelDown = false
 
     func load() async {
         do {
@@ -177,6 +180,11 @@ final class VPNManager: ObservableObject {
                 // — over the tunnel — rather than at launch on the real network.
                 AdSignalOverride.apply(country: exitInfo?.country)
                 AdsManager.shared.tunnelUp = true
+            }
+            if isFreshConnect, !sawTunnelDown {
+                // Up already when the app opened: nothing was just connected, no ad.
+                readyToUse += 1
+            } else if isFreshConnect {
                 AdsManager.shared.start()
                 AdsManager.shared.showAfterConnect(onAdSkipped: { [weak self] in
                     // The ad was closed early: the free connection ends with it.
@@ -188,6 +196,7 @@ final class VPNManager: ObservableObject {
                 })
             }
         } else {
+            sawTunnelDown = true
             // Put the device's real locale/time zone back the moment the tunnel
             // is no longer carrying the traffic. No-op if never applied.
             AdSignalOverride.restore()
