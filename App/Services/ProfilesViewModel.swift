@@ -93,6 +93,17 @@ final class ProfilesViewModel: ObservableObject {
         activeLinkURL = url
         isAutomatic = true
         lastPingAll = nil
+        store.appendTunnelLine("[links] using \(activeLink.map { label(of: $0) } ?? "?"): \(linkDescription)")
+    }
+
+    /// For the log: how many servers the link in use has, and how they were matched.
+    var linkDescription: String {
+        let all = profiles.filter { $0.core != .warp }
+        let url = activeLink?.url
+        let own = all.filter { $0.subscriptionURL == url }.count
+        let keys = Set(all.map { $0.subscriptionURL.map { URL(string: $0)?.lastPathComponent.prefix(4) ?? "?" } ?? "hand" })
+        let names = linkServers.prefix(3).map(\.name).joined(separator: " | ")
+        return "\(own) own of \(all.count) servers, \(subscriptions.count) links, server keys \(keys.sorted()), first: \(names)"
     }
 
     /// What a link is called in the list: its title, else its host.

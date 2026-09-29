@@ -68,6 +68,8 @@ final class AdsManager: NSObject, ObservableObject {
     private func loadAd() {
         guard tunnelUp, !isLoadingAd, rewardedInterstitial == nil else { return }
         isLoadingAd = true
+        AdSignalOverride.reassert()
+        ProfileStore.shared.appendTunnelLine("[ads] request over the tunnel: \(AdSignalOverride.snapshot())")
         GADRewardedInterstitialAd.load(withAdUnitID: AdsConfig.rewardedInterstitialUnitID, request: GADRequest()) { [weak self] ad, _ in
             guard let self else { return }
             self.isLoadingAd = false

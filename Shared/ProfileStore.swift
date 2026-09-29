@@ -124,6 +124,18 @@ final class ProfileStore {
     /// the app can see (the ad, mainly) sit in order with the tunnel's own.
     func appendTunnelLine(_ message: String) {
         let line = "[\(ISO8601DateFormatter().string(from: Date()))] \(message)\n"
+        #if DEBUG
+        print("[log] \(message)")   // a development build's console, read from the Mac
+        // …and a copy in Documents, which the Mac can fetch from a development build.
+        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let debugLog = docs.appendingPathComponent("debug.log")
+            if let handle = try? FileHandle(forWritingTo: debugLog) {
+                _ = try? handle.seekToEnd(); handle.write(Data(line.utf8)); try? handle.close()
+            } else {
+                try? Data(line.utf8).write(to: debugLog)
+            }
+        }
+        #endif
         if let handle = try? FileHandle(forWritingTo: tunnelLogURL) {
             _ = try? handle.seekToEnd()
             handle.write(Data(line.utf8))

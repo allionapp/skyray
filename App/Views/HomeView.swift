@@ -140,6 +140,7 @@ struct HomeView: View {
                     .contentShape(Circle())
                 }
                 .buttonStyle(PressScaleStyle())
+                .accessibilityIdentifier("connect")
                 .disabled(findingFastest || vpn.status == .disconnecting)
                 .accessibilityLabel(Text(vpn.isConnected ? "Disconnect" : "Connect"))
                 .padding(.top, 4).padding(.bottom, 10)
@@ -197,6 +198,9 @@ struct HomeView: View {
     private var serverRow: some View {
         HStack(spacing: 14) {
             Menu {
+                #if DEBUG
+                let _ = print("[log] [links] server menu: \(contenders.count) servers; \(profiles.linkDescription)")
+                #endif
                 Button { chooseAutomatic() } label: {
                     Label(String(localized: "Auto (fastest)"), systemImage: profiles.isAutomatic ? "checkmark" : "bolt")
                 }
@@ -220,6 +224,10 @@ struct HomeView: View {
                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Etha.outline.opacity(0.55), lineWidth: 1.2))
                 .contentShape(Rectangle())
             }
+            // A Menu keeps its items until its label changes; after a link switch the label can stay
+            // "Auto (fastest)", so a new identity per link makes it list that link's servers.
+            .id(profiles.activeLink?.url ?? "")
+            .accessibilityIdentifier("serverMenu")
             Button { Task { await testAgain() } } label: {
                 if profiles.isPinging { ProgressView() } else { Text("Test again").font(.system(size: 16, weight: .medium)) }
             }
@@ -283,6 +291,7 @@ struct HomeView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("linkName")
                 HStack(alignment: .top, spacing: 12) {
                     tile(value: daysValue, label: daysLabel)
                     tile(value: dataValue, label: dataLabel)

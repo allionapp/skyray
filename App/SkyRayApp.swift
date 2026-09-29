@@ -15,7 +15,11 @@ struct SkyRayApp: App {
                 .task { await onLaunch() }
                 .onChange(of: scenePhase) { phase in
                     vpn.setActive(phase == .active)
+                    #if DEBUG
+                    ProfileStore.shared.appendTunnelLine("[app] scene \(phase): \(AdSignalOverride.snapshot())")
+                    #else
                     ProfileStore.shared.appendTunnelLine("[app] scene \(phase)")
+                    #endif
                     if phase == .background { AdsManager.shared.appMovedToBackground() }
                     if phase == .active { Task { await profiles.updateStaleSubscriptions(defaultHours: vpn.settings.subscriptionAutoUpdateHours) } }
                 }

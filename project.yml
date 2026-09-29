@@ -113,6 +113,18 @@ targets:
         PRODUCT_NAME: PacketTunnel
         MARKETING_VERSION: "1.1.6"
         CURRENT_PROJECT_VERSION: "13"
+  SkyRayUITests:
+    # Drives the app on a real phone for the checks that need a real tunnel (links, server
+    # menu, connect, the ad). Development only; not part of any release.
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: SkyRay
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.allion.skyray.uitests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   SkyRay:
     build:
@@ -120,5 +132,8 @@ schemes:
         SkyRay: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets: [SkyRayUITests]
     archive:
       config: Release

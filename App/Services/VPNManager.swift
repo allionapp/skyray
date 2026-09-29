@@ -221,6 +221,7 @@ final class VPNManager: ObservableObject {
                         if parts[0] == "loc" { country = String(parts[1]) }
                     }
                     if let ip {
+                        ProfileStore.shared.appendTunnelLine("[exit] \(country ?? "?") \(ip) (through the tunnel)")
                         await MainActor.run {
                             self?.exitInfo = (ip, country)
                             // Refine the ad-signal override to the exact exit
