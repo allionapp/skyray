@@ -59,6 +59,14 @@ final class AdsManager: NSObject, ObservableObject {
             if isAdOnScreen || consentFormShowing {
                 presentingRoot?.presentedViewController?.dismiss(animated: false)
             }
+            // A consent chain cut off here never gets UMP's completion (a form closed in code is
+            // no choice): end it now, and ignore anything it still reports. The next Connect asks
+            // again over its own tunnel.
+            if setup == .consenting {
+                consentChain += 1
+                consentFormShowing = false
+                setup = .idle
+            }
             rewardedInterstitial = nil
             loadedAt = nil
         }
@@ -78,12 +86,14 @@ final class AdsManager: NSObject, ObservableObject {
     func start() {
         guard tunnelUp, setup == .idle else { return }
         setup = .consenting
+        consentChain += 1
+        let chain = consentChain
         ProfileStore.shared.appendTunnelLine("[ads] consent check")
         let parameters = UMPRequestParameters()
         parameters.tagForUnderAgeOfConsent = false
         UMPConsentInformation.sharedInstance.requestConsentInfoUpdate(with: parameters) { [weak self] error in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, chain == self.consentChain else { return }
                 // The tunnel went down meanwhile: nothing more of Google's until the next connect.
                 guard self.tunnelUp else { self.setup = .idle; return }
                 if let error {
@@ -94,32 +104,37 @@ final class AdsManager: NSObject, ObservableObject {
                     ProfileStore.shared.appendTunnelLine("[ads] consent info failed: \(error.localizedDescription)")
                 }
                 guard error == nil, let root = UIApplication.topMostViewController() else {
-                    self.requestTrackingThenInitialize()
+                    self.requestTrackingThenInitialize(chain: chain)
                     return
                 }
                 self.consentFormShowing = true
                 self.presentingRoot = root
                 UMPConsentForm.loadAndPresentIfRequired(from: root) { [weak self] _ in
                     Task { @MainActor in
-                        guard let self else { return }
+                        guard let self, chain == self.consentChain else { return }
                         self.consentFormShowing = false
                         guard self.tunnelUp else { self.setup = .idle; return }
-                        self.requestTrackingThenInitialize()
+                        self.requestTrackingThenInitialize(chain: chain)
                     }
                 }
             }
         }
     }
 
-    private func requestTrackingThenInitialize() {
+    private func requestTrackingThenInitialize(chain: Int) {
         ATTrackingManager.requestTrackingAuthorization { [weak self] _ in
-            Task { @MainActor in self?.initializeAndLoad() }
+            Task { @MainActor in
+                guard let self, chain == self.consentChain else { return }
+                self.initializeAndLoad()
+            }
         }
     }
 
     /// Whether the consent lookup failed this run (then the answer is unknown, not "no").
     private var consentUnknown = false
     private var consentFormShowing = false
+    /// Counts consent chains; a callback from one that was cut off is ignored.
+    private var consentChain = 0
     /// The view controller the consent form or the ad was presented from, to close it if the
     /// tunnel goes down while it is up.
     private weak var presentingRoot: UIViewController?
