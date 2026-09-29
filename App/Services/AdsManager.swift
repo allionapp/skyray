@@ -19,8 +19,11 @@ final class AdsManager: NSObject, ObservableObject {
     /// Cooldown so a flaky connection that drops and reconnects repeatedly
     /// doesn't show an ad every time.
     private let minInterval: TimeInterval = 20 * 60
-    /// How long the connecting screen waits for the ad once it has been requested.
+    /// How long the connecting screen waits for the ad once it has been requested; longer the
+    /// first time in a run, when the SDK itself is still starting (its configuration, then the ad).
     private let loadWait: TimeInterval = 12
+    private let firstLoadWait: TimeInterval = 25
+    private var sdkStarted = false
     /// The longest it waits at all, the consent form and the tracking prompt included.
     private let maxWait: TimeInterval = 60
 
@@ -66,6 +69,7 @@ final class AdsManager: NSObject, ObservableObject {
         #endif
         GADMobileAds.sharedInstance().start(completionHandler: nil)
         loadAd()
+        sdkStarted = true
     }
 
     private func loadAd() {
@@ -73,7 +77,7 @@ final class AdsManager: NSObject, ObservableObject {
         isLoadingAd = true
         // From the request on, the connecting screen waits only so long for the answer.
         if let until = pendingShowUntil {
-            pendingShowUntil = min(until, Date().addingTimeInterval(loadWait))
+            pendingShowUntil = min(until, Date().addingTimeInterval(sdkStarted ? loadWait : firstLoadWait))
             watchDeadline()
         }
         AdSignalOverride.reassert()
